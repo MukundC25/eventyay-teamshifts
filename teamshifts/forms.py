@@ -4,17 +4,29 @@ from django_countries import countries
 from django_scopes import scopes_disabled
 
 from .models import (
+    CFM_BUILTIN_FIELD_KEYS,
+    AskChoices,
     CallForTeamMembers,
     QuestionVariant,
     TeamApplicationQuestion,
     TeamRole,
+    normalize_field_order,
 )
 
 
 class CallForTeamMembersForm(forms.ModelForm):
     class Meta:
         model = CallForTeamMembers
-        fields = ("title", "active", "show_on_menu", "deadline", "description")
+        fields = (
+            "title",
+            "active",
+            "show_on_menu",
+            "deadline",
+            "description",
+            "ask_full_name",
+            "ask_phone",
+            "ask_availability",
+        )
         widgets = {
             "deadline": forms.DateTimeInput(
                 attrs={"class": "form-control datetimepicker"},
@@ -51,12 +63,11 @@ class TeamApplicationQuestionForm(forms.ModelForm):
 
     class Meta:
         model = TeamApplicationQuestion
-        fields = ("role", "question", "help_text", "variant", "required", "options", "active", "position")
+        fields = ("role", "question", "help_text", "variant", "required", "options", "active")
         widgets = {
             "options": forms.Textarea(
                 attrs={"class": "form-control", "rows": 3, "placeholder": _("One option per line")},
             ),
-            "position": forms.NumberInput(attrs={"class": "form-control", "min": 0}),
             "variant": forms.Select(attrs={"class": "form-control"}),
         }
 
@@ -89,68 +100,110 @@ class TeamApplicationQuestionForm(forms.ModelForm):
 
 
 class TeamMemberApplicationForm(forms.Form):
-    name = forms.CharField(
-        label=_("Full name"),
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-    )
-    email = forms.EmailField(
-        label=_("Email address"),
-        widget=forms.EmailInput(attrs={"class": "form-control", "readonly": True}),
-        help_text=_("To change your email address, visit your account settings."),
-    )
-    phone = forms.CharField(
-        required=False,
-        label=_("Phone / Mobile"),
-        help_text=_("Optional. We may use this to contact you regarding your shift."),
-        widget=forms.TextInput(attrs={"class": "form-control", "type": "tel", "placeholder": "+1 555 000 0000"}),
-    )
-    role = forms.ModelChoiceField(
-        queryset=TeamRole.objects.none(),
-        label=_("Role you are applying for"),
-        empty_label=_("— Select a role —"),
-        widget=forms.Select(attrs={"class": "form-control", "id": "id_role"}),
-    )
-    availability_notes = forms.CharField(
-        required=False,
-        label=_("Availability notes"),
-        help_text=_("Which days/hours can you commit to?"),
-        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
-    )
-
     QUESTION_FIELD_PREFIX = "question_"
 
-    def __init__(self, *args, event=None, user=None, applied_role_ids=(), **kwargs):
+    def __init__(self, *args, event=None, user=None, applied_role_ids=(), cfm=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._event = event
-        self._questions = []
+        self._questions: list[TeamApplicationQuestion] = []
+        self._field_order_keys: list = []
+
         if user is not None:
-            self.fields["name"].initial = user.fullname or ""
-            self.fields["email"].initial = user.email
+            self._user = user
+        else:
+            self._user = None
+
         if event is None:
             return
+
         with scopes_disabled():
-            self.fields["role"].queryset = TeamRole.objects.filter(event=event).exclude(pk__in=applied_role_ids)
+            role_qs = TeamRole.objects.filter(event=event).exclude(pk__in=applied_role_ids)
             self._questions = list(TeamApplicationQuestion.objects.filter(event=event, active=True).order_by("position", "pk"))
-        for question in self._questions:
-            field = self._build_field_for_question(question)
-            role_pk = str(question.role_id) if question.role_id else ""
-            field.widget.attrs["data-question-role"] = role_pk
-            field.widget.attrs["data-question-field"] = "1"
-            if question.role_id:
-                field.required = False
-            self.fields[self._field_name_for(question)] = field
+
+        question_map: dict[int, TeamApplicationQuestion] = {q.pk: q for q in self._questions}
+
+        if cfm is not None:
+            raw_order = normalize_field_order(list(cfm.field_order))
+        else:
+            raw_order = list(CFM_BUILTIN_FIELD_KEYS)
+
+        for item in raw_order:
+            if isinstance(item, str):
+                ask_state = cfm.get_ask_state(item) if cfm else AskChoices.OPTIONAL
+                if ask_state == AskChoices.DO_NOT_ASK:
+                    continue
+                required = ask_state == AskChoices.REQUIRED
+                self._field_order_keys.append(item)
+
+                if item == "role":
+                    field = forms.ModelChoiceField(
+                        queryset=role_qs,
+                        label=_("Role you are applying for"),
+                        required=True,
+                        empty_label=_("— Select a role —"),
+                        widget=forms.Select(attrs={"class": "form-control", "id": "id_role"}),
+                    )
+                    self.fields["role"] = field
+                elif item == "full_name":
+                    field = forms.CharField(
+                        label=_("Full name"),
+                        required=required,
+                        widget=forms.TextInput(attrs={"class": "form-control"}),
+                    )
+                    if user is not None:
+                        field.initial = user.fullname or ""
+                    self.fields["full_name"] = field
+                elif item == "email":
+                    field = forms.EmailField(
+                        label=_("Email address"),
+                        required=True,
+                        widget=forms.EmailInput(attrs={"class": "form-control", "readonly": True}),
+                        help_text=_("To change your email address, visit your account settings."),
+                    )
+                    if user is not None:
+                        field.initial = user.email
+                    self.fields["email"] = field
+                elif item == "phone":
+                    field = forms.CharField(
+                        label=_("Phone / Mobile"),
+                        required=required,
+                        help_text=_("Optional. We may use this to contact you regarding your shift."),
+                        widget=forms.TextInput(attrs={"class": "form-control", "type": "tel", "placeholder": "+1 555 000 0000"}),
+                    )
+                    self.fields["phone"] = field
+                elif item == "availability":
+                    field = forms.CharField(
+                        label=_("Availability notes"),
+                        required=required,
+                        help_text=_("Which days/hours can you commit to?"),
+                        widget=forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+                    )
+                    self.fields["availability_notes"] = field
+            else:
+                pk = int(item)
+                question = question_map.get(pk)
+                if question is None:
+                    continue
+                self._field_order_keys.append(item)
+                field = self._build_field_for_question(question)
+                role_pk = str(question.role_id) if question.role_id else ""
+                field.widget.attrs["data-question-role"] = role_pk
+                field.widget.attrs["data-question-field"] = "1"
+                if question.role_id:
+                    field.required = False
+                self.fields[self._field_name_for(question)] = field
 
     @staticmethod
-    def _field_name_for(question):
+    def _field_name_for(question: TeamApplicationQuestion) -> str:
         return f"{TeamMemberApplicationForm.QUESTION_FIELD_PREFIX}{question.pk}"
 
     @staticmethod
-    def _build_field_for_question(question):
+    def _build_field_for_question(question: TeamApplicationQuestion) -> forms.Field:
         label = str(question.question)
         help_text = str(question.help_text) if question.help_text else ""
         required = bool(question.required)
         variant = question.variant
-        common = {"label": label, "help_text": help_text, "required": required}
+        common: dict = {"label": label, "help_text": help_text, "required": required}
 
         if variant == QuestionVariant.STRING:
             return forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}), **common)
@@ -199,8 +252,24 @@ class TeamMemberApplicationForm(forms.Form):
             return forms.MultipleChoiceField(choices=options, widget=forms.CheckboxSelectMultiple, **common)
         return forms.CharField(widget=forms.TextInput(attrs={"class": "form-control"}), **common)
 
-    def visible_questions(self):
+    def visible_questions(self) -> list[tuple[TeamApplicationQuestion, forms.BoundField]]:
         return [(q, self[self._field_name_for(q)]) for q in self._questions]
+
+    def render_items(self):
+        """Yield {field, is_question, role_id} for the template so it can wrap
+        role-scoped custom question fields without needing dashed-attr lookup."""
+        question_map = {q.pk: q for q in self._questions}
+        for name in self.fields:
+            if name.startswith(self.QUESTION_FIELD_PREFIX):
+                try:
+                    pk = int(name[len(self.QUESTION_FIELD_PREFIX) :])
+                except ValueError:
+                    continue
+                question = question_map.get(pk)
+                role_id = str(question.role_id) if question and question.role_id else ""
+                yield {"field": self[name], "is_question": True, "role_id": role_id}
+            else:
+                yield {"field": self[name], "is_question": False, "role_id": ""}
 
     def clean(self):
         cleaned = super().clean()
@@ -220,11 +289,11 @@ class TeamMemberApplicationForm(forms.Form):
                 self.add_error(self._field_name_for(question), _("This field is required."))
         return cleaned
 
-    def get_question_answers(self):
+    def get_question_answers(self) -> list[tuple[TeamApplicationQuestion, str]]:
         return [(q, self._serialize_answer(q, self.cleaned_data.get(self._field_name_for(q)))) for q in self._questions]
 
     @staticmethod
-    def _serialize_answer(question, value):
+    def _serialize_answer(question: TeamApplicationQuestion, value) -> str:
         if value is None or value == "":
             return ""
         variant = question.variant
@@ -239,7 +308,7 @@ class TeamMemberApplicationForm(forms.Form):
         return str(value)
 
 
-def render_answer_for_review(question, answer_text):
+def render_answer_for_review(question: TeamApplicationQuestion, answer_text: str) -> str:
     if not answer_text:
         return ""
     if question.variant == QuestionVariant.BOOLEAN:

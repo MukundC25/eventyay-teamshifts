@@ -5,11 +5,38 @@ from django.utils.translation import gettext_lazy as _
 from django_scopes import ScopedManager
 from i18nfield.fields import I18nTextField
 
+CFM_BUILTIN_FIELD_KEYS = ("full_name", "email", "phone", "role", "availability")
+
+CFM_LOCKED_FIELDS = frozenset({"email", "role"})
+
+
+def normalize_field_order(order: list) -> list:
+    builtin = list(CFM_BUILTIN_FIELD_KEYS)
+    builtin_set = set(builtin)
+    missing = [f for f in builtin if f not in order]
+    if not missing:
+        return order
+    result = list(order)
+    for field in missing:
+        canonical_idx = builtin.index(field)
+        insert_after = -1
+        for i, item in enumerate(result):
+            if item in builtin_set and builtin.index(item) < canonical_idx:
+                insert_after = i
+        result.insert(insert_after + 1, field)
+    return result
+
 
 class ApplicationStatus(models.TextChoices):
     PENDING = "pending", _("Pending")
     ACCEPTED = "accepted", _("Accepted")
     REJECTED = "rejected", _("Rejected")
+
+
+class AskChoices(models.TextChoices):
+    DO_NOT_ASK = "do_not_ask", _("Do not ask")
+    OPTIONAL = "optional", _("Optional")
+    REQUIRED = "required", _("Required")
 
 
 class CallForTeamMembers(models.Model):
@@ -39,6 +66,39 @@ class CallForTeamMembers(models.Model):
     )
     description = I18nTextField(verbose_name=_("Description"), blank=True, null=True)
 
+    ask_full_name = models.CharField(
+        max_length=20,
+        choices=AskChoices.choices,
+        default=AskChoices.OPTIONAL,
+        verbose_name=_("Full name"),
+    )
+    ask_email = models.CharField(
+        max_length=20,
+        choices=AskChoices.choices,
+        default=AskChoices.REQUIRED,
+        verbose_name=_("Email address"),
+    )
+    ask_phone = models.CharField(
+        max_length=20,
+        choices=AskChoices.choices,
+        default=AskChoices.OPTIONAL,
+        verbose_name=_("Phone / Mobile"),
+    )
+    ask_role = models.CharField(
+        max_length=20,
+        choices=AskChoices.choices,
+        default=AskChoices.REQUIRED,
+        verbose_name=_("Role"),
+    )
+    ask_availability = models.CharField(
+        max_length=20,
+        choices=AskChoices.choices,
+        default=AskChoices.OPTIONAL,
+        verbose_name=_("Availability notes"),
+    )
+
+    field_order = models.JSONField(default=list, verbose_name=_("Field order"))
+
     objects = ScopedManager(event="event")
 
     class Meta:
@@ -52,6 +112,16 @@ class CallForTeamMembers(models.Model):
         if self.deadline and timezone.now() > self.deadline:
             return False
         return True
+
+    def get_ask_state(self, field_key: str) -> str:
+        mapping = {
+            "full_name": self.ask_full_name,
+            "email": self.ask_email,
+            "phone": self.ask_phone,
+            "role": self.ask_role,
+            "availability": self.ask_availability,
+        }
+        return mapping.get(field_key, AskChoices.DO_NOT_ASK)
 
     def __str__(self):
         return f"{self.title} — {self.event.slug} ({'active' if self.active else 'inactive'})"

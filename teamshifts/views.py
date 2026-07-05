@@ -19,6 +19,8 @@ from .forms import (
     render_answer_for_review,
 )
 from .models import (
+    CFM_BUILTIN_FIELD_KEYS,
+    CFM_LOCKED_FIELDS,
     ApplicationStatus,
     CallForTeamMembers,
     Shift,
@@ -26,6 +28,7 @@ from .models import (
     TeamApplicationQuestion,
     TeamMemberApplication,
     TeamRole,
+    normalize_field_order,
 )
 
 
@@ -53,11 +56,6 @@ class TeamShiftsDashboard(EventPermissionRequiredMixin, TemplateView):
 
 
 class CFMSettingsView(EventPermissionRequiredMixin, View):
-    """
-    Settings page / form builder: shows CFM settings plus the inline list
-    of organiser-defined custom application questions.
-    """
-
     permission = "can_change_event_settings"
     template_name = "teamshifts/cfv_settings.html"
 
@@ -70,20 +68,76 @@ class CFMSettingsView(EventPermissionRequiredMixin, View):
         with scope(event=self.request.event):
             return list(TeamApplicationQuestion.objects.filter(event=self.request.event).select_related("role").order_by("position", "pk"))
 
+    def _unified_rows(self, cfm, questions):
+        question_map = {q.pk: q for q in questions}
+        order = normalize_field_order(list(cfm.field_order))
+
+        present_pks = {int(item) for item in order if not isinstance(item, str)}
+        for q in questions:
+            if q.pk not in present_pks:
+                order.append(q.pk)
+
+        label_map = {
+            "full_name": _("Full name"),
+            "email": _("Email address"),
+            "phone": _("Phone / Mobile"),
+            "role": _("Role"),
+            "availability": _("Availability notes"),
+        }
+
+        rows = []
+        for item in order:
+            if isinstance(item, str):
+                rows.append(
+                    {
+                        "kind": "builtin",
+                        "key": item,
+                        "label": label_map.get(item, item),
+                        "ask_state": cfm.get_ask_state(item),
+                        "locked": item in CFM_LOCKED_FIELDS,
+                        "question": None,
+                    }
+                )
+            else:
+                q = question_map.get(int(item))
+                if q is None:
+                    continue
+                rows.append(
+                    {
+                        "kind": "custom",
+                        "key": q.pk,
+                        "label": str(q.question),
+                        "ask_state": None,
+                        "locked": False,
+                        "question": q,
+                    }
+                )
+        return rows
+
+    def _ctx(self, cfm, form, questions):
+        return {
+            "form": form,
+            "cfm": cfm,
+            "questions": questions,
+            "unified_rows": self._unified_rows(cfm, questions),
+        }
+
     def get(self, request, *args, **kwargs):
         cfm = self._get_cfm()
+        questions = self._questions()
         form = CallForTeamMembersForm(instance=cfm, locales=request.event.settings.locales)
-        return render(request, self.template_name, {"form": form, "cfm": cfm, "questions": self._questions()})
+        return render(request, self.template_name, self._ctx(cfm, form, questions))
 
     def post(self, request, *args, **kwargs):
         cfm = self._get_cfm()
+        questions = self._questions()
         form = CallForTeamMembersForm(request.POST, instance=cfm, locales=request.event.settings.locales)
         if form.is_valid():
             with scope(event=request.event):
                 form.save()
             messages.success(request, _("Settings saved."))
             return redirect("plugins:teamshifts:cfm_settings", organizer=request.organizer.slug, event=request.event.slug)
-        return render(request, self.template_name, {"form": form, "cfm": cfm, "questions": self._questions()})
+        return render(request, self.template_name, self._ctx(cfm, form, questions))
 
 
 class TeamRoleListView(EventPermissionRequiredMixin, View):
@@ -128,8 +182,6 @@ class TeamRoleDeleteView(EventPermissionRequiredMixin, View):
 
 
 class QuestionEditView(EventPermissionRequiredMixin, View):
-    """Create (no pk) or edit (pk) a custom application question."""
-
     permission = "can_change_event_settings"
     template_name = "teamshifts/question_edit.html"
 
@@ -151,6 +203,16 @@ class QuestionEditView(EventPermissionRequiredMixin, View):
             with scope(event=request.event):
                 saved = form.save()
             if instance is None:
+                with scope(event=request.event):
+                    try:
+                        cfm = request.event.call_for_team_members
+                        order = normalize_field_order(list(cfm.field_order))
+                        if saved.pk not in order:
+                            order.append(saved.pk)
+                        cfm.field_order = order
+                        cfm.save(update_fields=["field_order"])
+                    except CallForTeamMembers.DoesNotExist:
+                        pass
                 messages.success(request, _("Question '%s' added.") % saved.question)
             else:
                 messages.success(request, _("Question saved."))
@@ -166,7 +228,14 @@ class QuestionDeleteView(EventPermissionRequiredMixin, View):
         with scope(event=event):
             question = get_object_or_404(TeamApplicationQuestion, pk=kwargs["pk"], event=event)
             label = str(question.question)
+            pk = question.pk
             question.delete()
+            try:
+                cfm = event.call_for_team_members
+                cfm.field_order = [item for item in cfm.field_order if item != pk]
+                cfm.save(update_fields=["field_order"])
+            except CallForTeamMembers.DoesNotExist:
+                pass
         messages.success(request, _("Question '%s' deleted.") % label)
         return redirect("plugins:teamshifts:cfm_settings", organizer=request.organizer.slug, event=event.slug)
 
@@ -177,14 +246,31 @@ class QuestionReorderView(EventPermissionRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body.decode("utf-8"))
-            pks = [str(pk) for pk in data.get("ids", [])]
+            raw_ids = data.get("ids", [])
         except (json.JSONDecodeError, ValueError, AttributeError):
             return HttpResponse(status=400)
+
+        normalised = []
+        for item in raw_ids:
+            if isinstance(item, str) and item in CFM_BUILTIN_FIELD_KEYS:
+                normalised.append(item)
+            elif isinstance(item, int) or (isinstance(item, str) and item.isdigit()):
+                normalised.append(int(item))
+            else:
+                return HttpResponse(status=400)
+
         event = request.event
         with scope(event=event):
-            for position, pk in enumerate(pks):
-                if pk.isdigit():
-                    TeamApplicationQuestion.objects.filter(pk=int(pk), event=event).update(position=position)
+            for position, item in enumerate(normalised):
+                if isinstance(item, int):
+                    TeamApplicationQuestion.objects.filter(pk=item, event=event).update(position=position)
+            try:
+                cfm = event.call_for_team_members
+                cfm.field_order = normalised
+                cfm.save(update_fields=["field_order"])
+            except CallForTeamMembers.DoesNotExist:
+                pass
+
         return HttpResponse(status=204)
 
 
@@ -298,6 +384,7 @@ class PublicApplyView(FormView):
         kwargs = self.get_form_kwargs()
         kwargs["event"] = self.event
         kwargs["user"] = self.request.user
+        kwargs["cfm"] = self.cfm
         with scope(event=self.event):
             kwargs["applied_role_ids"] = list(TeamMemberApplication.objects.filter(event=self.event, user=self.request.user).values_list("role_id", flat=True))
         return TeamMemberApplicationForm(**kwargs)
@@ -318,7 +405,7 @@ class PublicApplyView(FormView):
             messages.error(self.request, _("Applications are not currently open for this event."))
             return self.form_invalid(form)
         role = form.cleaned_data["role"]
-        name = form.cleaned_data.get("name", "").strip()
+        full_name = form.cleaned_data.get("full_name", "").strip()
         with scope(event=event):
             if TeamMemberApplication.objects.filter(event=event, user=self.request.user, role=role).exists():
                 messages.error(self.request, _("You have already applied for the role '%s'.") % role.name)
@@ -338,8 +425,8 @@ class PublicApplyView(FormView):
                 if question.role_id and question.role_id != role.pk:
                     continue
                 TeamApplicationAnswer.objects.create(application=application, question=question, answer=answer_text)
-        if name and name != self.request.user.fullname:
-            self.request.user.fullname = name
+        if full_name and full_name != self.request.user.fullname:
+            self.request.user.fullname = full_name
             self.request.user.save(update_fields=["fullname"])
         messages.success(self.request, _("Your application for '%s' has been submitted.") % role.name)
         return redirect(
