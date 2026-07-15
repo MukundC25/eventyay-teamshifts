@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, Sum
 from django.forms import inlineformset_factory
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,11 +12,12 @@ from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _, ngettext
-from django.views.generic import DeleteView, FormView, TemplateView, View
+from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
 from django_scopes import scope, scopes_disabled
 from eventyay.base.i18n import LazyI18nString
 from eventyay.base.templatetags.rich_text import rich_text
 from eventyay.control.permissions import EventPermissionRequiredMixin
+from eventyay.control.views import PaginationMixin
 
 from .forms import (
     BaseShiftRoleFormSet,
@@ -1255,3 +1256,65 @@ class ShiftDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, DeleteVie
     def delete(self, request, *args, **kwargs):
         messages.success(request, _("The shift has been deleted."))
         return super().delete(request, *args, **kwargs)
+
+
+class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, PaginationMixin, ListView):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/members.html"
+    context_object_name = "members"
+
+    def get_queryset(self):
+        event = self.request.event
+        with scope(event=event):
+            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user", "role")
+
+            search = self.request.GET.get("q", "").strip()
+            role_filter = self.request.GET.get("role")
+
+            if role_filter and role_filter.isdigit():
+                qs = qs.filter(role_id=int(role_filter))
+
+            if search:
+                qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+
+            qs = qs.annotate(
+                shifts_assigned=Count("user__shift_assignments", filter=Q(user__shift_assignments__shift__event=event)),
+                hours_scheduled=Sum(
+                    ExpressionWrapper(
+                        F("user__shift_assignments__shift__end_time") - F("user__shift_assignments__shift__start_time"),
+                        output_field=DurationField(),
+                    ),
+                    filter=Q(user__shift_assignments__shift__event=event),
+                ),
+            ).order_by("user__fullname", "user__email")
+
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["roles"] = TeamRole.objects.filter(event=self.request.event)
+
+        can_view_email = False
+        try:
+            if self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_teamshifts_view_email_addresses", request=self.request):
+                can_view_email = True
+        except ValueError:
+            pass
+
+        if not can_view_email and self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_view_orders", request=self.request):
+            can_view_email = True
+
+        ctx["can_view_email"] = can_view_email
+        return ctx
+
+
+class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+
+    def post(self, request, *args, **kwargs):
+        event = request.event
+        with scope(event=event):
+            application = get_object_or_404(TeamMemberApplication, pk=kwargs["pk"], event=event, status=ApplicationStatus.ACCEPTED)
+            application.arrived = not application.arrived
+            application.save(update_fields=["arrived"])
+            return JsonResponse({"success": True, "arrived": application.arrived})
