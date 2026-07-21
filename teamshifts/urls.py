@@ -173,6 +173,26 @@ urlpatterns = [
         name="email_delete",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/shifts/",
+        views.ShiftScheduleTalksAPIView.as_view(),
+        name="api_shifts",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/availabilities/",
+        views.ShiftScheduleAvailabilitiesAPIView.as_view(),
+        name="api_availabilities",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/warnings/",
+        views.ShiftScheduleWarningsAPIView.as_view(),
+        name="api_warnings",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/grid/",
+        views.ShiftScheduleGridEditorView.as_view(),
+        name="schedule_grid",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/<int:pk>/send/",
         views.EmailQueueSendNowView.as_view(),
         name="email_send_now",

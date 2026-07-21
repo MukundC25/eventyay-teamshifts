@@ -1354,3 +1354,55 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             application.arrived = not application.arrived
             application.save(update_fields=["arrived"])
             return JsonResponse({"success": True, "arrived": application.arrived})
+from django.http import JsonResponse
+class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
+    permission = 'can_change_event_settings'
+    def get(self, request, *args, **kwargs):
+        event = request.event
+        data = {
+            'version': None,
+            'event_start': event.date_from.isoformat() if event.date_from else '',
+            'event_end': event.date_to.isoformat() if event.date_to else '',
+            'timezone': event.timezone,
+            'locales': ['en'],
+            'rooms': [],
+            'tracks': [],
+            'speakers': [],
+            'talks': [],
+            'warnings': {}
+        }
+        locations = event.teamshifts_locations.all()
+        for loc in locations:
+            data['rooms'].append({'id': loc.id, 'name': {'en': loc.name}, 'description': {'en': loc.description or ''}})
+        shifts = event.teamshifts_shifts.all().prefetch_related('roles', 'roles__assignments', 'roles__assignments__user')
+        for shift in shifts:
+            roles_data = []
+            for role in shift.roles.all():
+                assignments = []
+                for assignment in role.assignments.all():
+                    assignments.append({'name': assignment.user.get_full_name() if assignment.user else '', 'email': assignment.user.email if assignment.user else ''})
+                roles_data.append({'id': role.id, 'name': {'en': role.team_role.name}, 'capacity': role.capacity_required, 'assigned': assignments})
+            data['talks'].append({'id': shift.id, 'code': str(shift.id), 'title': {'en': shift.name or 'Shift'}, 'abstract': '', 'description': shift.description, 'room': shift.location_id, 'start': shift.start_time.isoformat() if shift.start_time else '', 'end': shift.end_time.isoformat() if shift.end_time else '', 'duration': int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0, 'roles': roles_data, 'state': 'confirmed'})
+        return JsonResponse(data)
+
+class ShiftScheduleAvailabilitiesAPIView(EventPermissionRequiredMixin, View):
+    permission = 'can_change_event_settings'
+    def get(self, request, *args, **kwargs):
+        return JsonResponse({'rooms': {}, 'talks': {}})
+
+class ShiftScheduleWarningsAPIView(EventPermissionRequiredMixin, View):
+    permission = 'can_change_event_settings'
+    def get(self, request, *args, **kwargs):
+        return JsonResponse({})
+
+class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
+    permission = 'can_change_event_settings'
+    template_name = 'teamshifts/schedule_grid.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        from django.utils.translation import get_language_info, get_language
+        language_information = get_language_info(get_language())
+        path = language_information.get('path', language_information.get('code', 'en'))
+        ctx['gettext_language'] = path.replace('-', '_')
+        return ctx
