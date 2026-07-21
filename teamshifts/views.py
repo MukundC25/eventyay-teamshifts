@@ -1371,10 +1371,10 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             'talks': [],
             'warnings': {}
         }
-        locations = event.teamshifts_locations.all()
+        locations = event.shift_locations.all()
         for loc in locations:
             data['rooms'].append({'id': loc.id, 'name': {'en': loc.name}, 'description': {'en': loc.description or ''}})
-        shifts = event.teamshifts_shifts.all().prefetch_related('roles', 'roles__assignments', 'roles__assignments__user')
+        shifts = event.shifts.all().prefetch_related('roles', 'roles__assignments', 'roles__assignments__user')
         for shift in shifts:
             roles_data = []
             for role in shift.roles.all():
