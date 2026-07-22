@@ -7,10 +7,11 @@
 {% load static %}
 {% load vite %}
 
-{% block scripts %}
+{% block custom_header %}
+    {{ block.super }}
     {% vite_hmr %}
     {% vite_asset "src/main.ts" %}
-{% endblock scripts %}
+{% endblock %}
 
 {% block title %}{% trans "Shift Schedule" %} :: {{ request.event.name }}{% endblock %}
 

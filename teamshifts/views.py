@@ -1374,14 +1374,12 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
         locations = event.shift_locations.all()
         for loc in locations:
             data['rooms'].append({'id': loc.id, 'name': {'en': loc.name}, 'description': {'en': loc.description or ''}})
-        shifts = event.shifts.all().prefetch_related('roles', 'roles__assignments', 'roles__assignments__user')
+        shifts = event.shifts.all().prefetch_related('role_assignments', 'role_assignments__role')
         for shift in shifts:
             roles_data = []
-            for role in shift.roles.all():
+            for role_assignment in shift.role_assignments.all():
                 assignments = []
-                for assignment in role.assignments.all():
-                    assignments.append({'name': assignment.user.get_full_name() if assignment.user else '', 'email': assignment.user.email if assignment.user else ''})
-                roles_data.append({'id': role.id, 'name': {'en': role.team_role.name}, 'capacity': role.capacity_required, 'assigned': assignments})
+                roles_data.append({'id': role_assignment.role.id, 'name': {'en': role_assignment.role.name}, 'capacity': role_assignment.capacity, 'assigned': assignments})
             data['talks'].append({'id': shift.id, 'code': str(shift.id), 'title': {'en': shift.name or 'Shift'}, 'abstract': '', 'description': shift.description, 'room': shift.location_id, 'start': shift.start_time.isoformat() if shift.start_time else '', 'end': shift.end_time.isoformat() if shift.end_time else '', 'duration': int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0, 'roles': roles_data, 'state': 'confirmed'})
         return JsonResponse(data)
 
