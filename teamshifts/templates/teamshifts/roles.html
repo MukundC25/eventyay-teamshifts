@@ -23,6 +23,7 @@
                 <thead>
                     <tr>
                         <th>{% trans "Role name" %}</th>
+                        <th>{% trans "Status" %}</th>
                         <th>{% trans "Description" %}</th>
                         <th>{% trans "Applications" %}</th>
                         <th class='action-col-2'></th>
@@ -32,6 +33,13 @@
                     {% for role in roles %}
                         <tr>
                             <td><strong>{{ role.name }}</strong></td>
+                            <td>
+                                {% if role.is_restricted %}
+                                    <span class="label label-warning">{% trans "Restricted" %}</span>
+                                {% else %}
+                                    <span class="label label-success">{% trans "Open" %}</span>
+                                {% endif %}
+                            </td>
                             <td class='text-muted'>{{ role.description|default:"—" }}</td>
                             <td></td>
                             <td class='text-right flip'>
@@ -66,6 +74,7 @@
                 {% csrf_token %}
                 {% bootstrap_form_errors form %}
                 {% bootstrap_field form.name layout="control" %}
+                {% bootstrap_field form.is_restricted layout="control" %}
                 {% bootstrap_field form.description layout="control" %}
                 <div class='form-group submit-group'>
                     <button type='submit' class='btn btn-primary btn-save'>
