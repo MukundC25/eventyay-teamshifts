@@ -1369,8 +1369,17 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             'tracks': [],
             'speakers': [],
             'talks': [],
-            'warnings': {}
+            'warnings': {},
+            'roles': []
         }
+        
+        roles = event.team_roles.all()
+        for role in roles:
+            data['roles'].append({
+                'id': role.id,
+                'name': {'en': role.name}
+            })
+            
         locations = event.shift_locations.all()
         for loc in locations:
             data['rooms'].append({'id': loc.id, 'name': {'en': loc.name}, 'description': {'en': loc.description or ''}})
