@@ -23,21 +23,5 @@
         </a>
     </h1>
 
-    <div class="schedule-header d-flex mb-3 d-print-none">
-        <div id="schedule-action-wrapper" class="d-flex align-items-center ml-auto">
-            <details class="dropdown ml-2" aria-haspopup="menu" role="menu">
-                <summary class="btn btn-outline-info" id="schedule-actions">
-                    {% trans "Actions" %} <i class="fa fa-caret-down ml-1"></i>
-                </summary>
-
-                <div class="dropdown-content dropdown-front dropdown-content-s{% if rtl %}e{% else %}w{% endif %}">
-                    <a class="dropdown-item" href="#" target="_blank" rel="noopener" role="menuitem" tabindex="-1">
-                        <i class="fa fa-link"></i> {% trans "View in frontend" %}
-                    </a>
-                </div>
-            </details>
-        </div>
-    </div>
-    
     <div id="app" data-gettext="{{ gettext_language }}" data-mode="shifts"></div>
 {% endblock %}
