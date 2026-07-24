@@ -473,12 +473,12 @@ class QuestionToggleView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return JsonResponse({"success": True, "field": field, "value": value})
 
 
-class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
+class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, PaginationMixin, ListView):
     permission = "can_change_event_settings"
     template_name = "teamshifts/applications.html"
+    context_object_name = "applications"
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+    def get_queryset(self):
         event = self.request.event
         with scope(event=event):
             qs = TeamMemberApplication.objects.filter(event=event).select_related("user", "role").prefetch_related("answers__question").order_by("-created_at")
@@ -490,10 +490,17 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Templ
                 qs = qs.filter(status=status_filter)
             if role_filter and role_filter.isdigit():
                 qs = qs.filter(role_id=int(role_filter))
-            else:
-                role_filter = ""
             if search:
                 qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+            return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        event = self.request.event
+        with scope(event=event):
+            status_filter = self.request.GET.get("status")
+            role_filter = self.request.GET.get("role")
+            search = self.request.GET.get("q", "").strip()
 
             try:
                 cfm = event.call_for_team_members
@@ -531,7 +538,7 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Templ
                 elif key in custom_questions:
                     columns.append({"key": key, "label": custom_questions[key]})
 
-            applications = list(qs)
+            applications = list(ctx["applications"])
             for app in applications:
                 app_dynamic_values = []
                 answers_dict = {str(a.question_id): render_answer_for_review(a.question, a.answer) for a in app.answers.all()}
@@ -550,12 +557,11 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Templ
                         app_dynamic_values.append(answers_dict.get(key, ""))
                 app.dynamic_values = app_dynamic_values
 
-            ctx["applications"] = applications
             ctx["columns"] = columns
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
             ctx["status_choices"] = ApplicationStatus.choices
             ctx["current_status"] = status_filter
-            ctx["current_role"] = role_filter
+            ctx["current_role"] = role_filter if role_filter and role_filter.isdigit() else ""
             ctx["search"] = search
         return ctx
 
