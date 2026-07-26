@@ -22,19 +22,35 @@
                 <span class="fa fa-arrow-left"></span> {% trans "Back to applications list" %}
             </a>
         {% endif %}
-        
-        {% if application.status == 'pending' %}
+
         <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}"
-              method="post" class="helper-display-inline" style="float: right;">
+              method="post" class="helper-display-inline pull-right" id="detail-status-form">
             {% csrf_token %}
-            <button type="submit" name="action" value="accept" class="btn btn-success">
-                <span class="fa fa-check"></span> {% trans "Accept" %}
-            </button>
-            <button type="submit" name="action" value="reject" class="btn btn-danger">
-                <span class="fa fa-times"></span> {% trans "Reject" %}
-            </button>
+            <input type="hidden" name="status" id="detail-status-input" value="{{ application.status }}">
+            <div class="btn-group">
+                {% if application.status == 'pending' %}
+                    <button type="button" class="btn btn-warning disabled">{% trans "Pending" %}</button>
+                {% elif application.status == 'accepted' %}
+                    <button type="button" class="btn btn-success disabled">{% trans "Accepted" %}</button>
+                {% else %}
+                    <button type="button" class="btn btn-danger disabled">{% trans "Rejected" %}</button>
+                {% endif %}
+                <button type="button" class="btn {% if application.status == 'pending' %}btn-warning{% elif application.status == 'accepted' %}btn-success{% else %}btn-danger{% endif %} dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-right">
+                    {% for value, label in status_choices %}
+                        {% if value != application.status %}
+                            <li>
+                                <a href="#" onclick="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { document.getElementById('detail-status-input').value='{{ value }}'; document.getElementById('detail-status-form').submit(); } return false;">
+                                    {{ label }}
+                                </a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
         </form>
-        {% endif %}
     </div>
 
     <div class="panel panel-default">

@@ -66,3 +66,13 @@ label .optional {
     margin-top: 12px;
     margin-bottom: 0;
 }
+
+.table-responsive {
+    overflow: visible;
+}
+
+@media (max-width: 767px) {
+    .table-responsive {
+        overflow-x: auto;
+    }
+}
