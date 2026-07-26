@@ -12,7 +12,7 @@
         </div>
     </nav>
     
-    <div style="margin-bottom: 20px;">
+    <div class="teamshifts-detail-header-container">
         {% if application.status == 'accepted' %}
             <a href="{% url 'plugins:teamshifts:members' organizer=request.organizer.slug event=request.event.slug %}" class="btn btn-default">
                 <span class="fa fa-arrow-left"></span> {% trans "Back to members list" %}
@@ -22,35 +22,17 @@
                 <span class="fa fa-arrow-left"></span> {% trans "Back to applications list" %}
             </a>
         {% endif %}
-
+        <h2 class="teamshifts-detail-title">
+            {% trans "Application:" %} {{ application.user.get_full_name }}
+        </h2>
         <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}"
               method="post" class="helper-display-inline pull-right" id="detail-status-form">
             {% csrf_token %}
-            <input type="hidden" name="status" id="detail-status-input" value="{{ application.status }}">
-            <div class="btn-group">
-                {% if application.status == 'pending' %}
-                    <button type="button" class="btn btn-warning disabled">{% trans "Pending" %}</button>
-                {% elif application.status == 'accepted' %}
-                    <button type="button" class="btn btn-success disabled">{% trans "Accepted" %}</button>
-                {% else %}
-                    <button type="button" class="btn btn-danger disabled">{% trans "Rejected" %}</button>
-                {% endif %}
-                <button type="button" class="btn {% if application.status == 'pending' %}btn-warning{% elif application.status == 'accepted' %}btn-success{% else %}btn-danger{% endif %} dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="{% trans 'Change status' %}" title="{% trans 'Change status' %}">
-                    <span class="sr-only">{% trans "Change status" %}</span>
-                    <span class="caret"></span>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-right">
-                    {% for value, label in status_choices %}
-                        {% if value != application.status %}
-                            <li>
-                                <a href="#" onclick="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { document.getElementById('detail-status-input').value='{{ value }}'; document.getElementById('detail-status-form').submit(); } return false;">
-                                    {{ label }}
-                                </a>
-                            </li>
-                        {% endif %}
-                    {% endfor %}
-                </ul>
-            </div>
+            <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ application.status }}'; }">
+                {% for value, label in status_choices %}
+                    <option style="color: black; background: white;" value="{{ value }}" {% if value == application.status %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
         </form>
     </div>
 

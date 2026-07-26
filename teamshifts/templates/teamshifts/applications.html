@@ -71,41 +71,21 @@
                 <tbody>
                     {% for app in applications %}
                         <tr>
-                            <td style="padding-right: 0;">
+                            <td class="teamshifts-checkbox-cell">
                                 <input type="checkbox" name="application_ids" value="{{ app.pk }}" form="bulk-action-form" class="app-checkbox" {% if app.status != 'pending' %}disabled{% endif %}>
                             </td>
                             {% for val in app.dynamic_values %}
                                 <td>{{ val|default:"—" }}</td>
                             {% endfor %}
-                            <td>
+                            <td class="text-nowrap">
                                 <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}"
-                                      method="post" id="status-form-{{ app.pk }}">
+                                      method="post" id="status-form-{{ app.pk }}" class="teamshifts-inline-form">
                                     {% csrf_token %}
-                                    <input type="hidden" name="status" id="status-input-{{ app.pk }}" value="{{ app.status }}">
-                                    <div class="btn-group">
-                                        {% if app.status == 'pending' %}
-                                            <button type="button" class="btn btn-warning btn-sm disabled">{% trans "Pending" %}</button>
-                                        {% elif app.status == 'accepted' %}
-                                            <button type="button" class="btn btn-success btn-sm disabled">{% trans "Accepted" %}</button>
-                                        {% else %}
-                                            <button type="button" class="btn btn-danger btn-sm disabled">{% trans "Rejected" %}</button>
-                                        {% endif %}
-                                        <button type="button" class="btn btn-sm {% if app.status == 'pending' %}btn-warning{% elif app.status == 'accepted' %}btn-success{% else %}btn-danger{% endif %} dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="{% trans 'Change status' %}" title="{% trans 'Change status' %}">
-                                            <span class="sr-only">{% trans "Change status" %}</span>
-                                            <span class="caret"></span>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-right">
-                                            {% for value, label in status_choices %}
-                                                {% if value != app.status %}
-                                                    <li>
-                                                        <a href="#" onclick="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { document.getElementById('status-input-{{ app.pk }}').value='{{ value }}'; document.getElementById('status-form-{{ app.pk }}').submit(); } return false;">
-                                                            {{ label }}
-                                                        </a>
-                                                    </li>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </ul>
-                                    </div>
+                                    <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if app.status == 'pending' %}label-warning{% elif app.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ app.status }}'; }">
+                                        {% for value, label in status_choices %}
+                                            <option style="color: black; background: white;" value="{{ value }}" {% if value == app.status %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
                                 </form>
                             </td>
                             <td>{{ app.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
