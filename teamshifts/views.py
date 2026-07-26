@@ -660,7 +660,6 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
             )
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
-        ctx["status_choices"] = ApplicationStatus.choices
         return ctx
 
 

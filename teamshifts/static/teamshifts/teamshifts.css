@@ -104,3 +104,8 @@ label .optional {
     margin-top: 20px;
     margin-bottom: 0;
 }
+
+.teamshifts-status-dropdown option {
+    color: black;
+    background: white;
+}
