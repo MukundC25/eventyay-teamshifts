@@ -48,6 +48,11 @@ urlpatterns = [
         name="role_delete",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/roles/<int:pk>/edit/",
+        views.TeamRoleEditView.as_view(),
+        name="role_edit",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/locations/",
         views.ShiftLocationListView.as_view(),
         name="locations",

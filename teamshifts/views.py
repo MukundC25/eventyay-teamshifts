@@ -273,6 +273,30 @@ class TeamRoleDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=event.slug)
 
 
+class TeamRoleEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/role_edit.html"
+
+    def get(self, request, *args, **kwargs):
+        with scope(event=request.event):
+            role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+        form = TeamRoleForm(instance=role)
+        return render(request, self.template_name, {"form": form, "role": role})
+
+    def post(self, request, *args, **kwargs):
+        with scope(event=request.event):
+            role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+        form = TeamRoleForm(request.POST, instance=role)
+        with scope(event=request.event):
+            is_valid = form.is_valid()
+            if is_valid:
+                form.save()
+        if is_valid:
+            messages.success(request, _("Role '%s' updated.") % role.name)
+            return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
+        return render(request, self.template_name, {"form": form, "role": role})
+
+
 class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
     template_name = "teamshifts/email_templates.html"
