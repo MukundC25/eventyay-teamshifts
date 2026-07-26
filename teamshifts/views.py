@@ -1281,7 +1281,27 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
                 qs = qs.filter(role_id=int(role_filter))
 
             if search:
-                qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                can_view_email = False
+                try:
+                    can_view_email = self.request.user.has_event_permission(
+                        self.request.organizer,
+                        event,
+                        "can_teamshifts_view_email_addresses",
+                        request=self.request,
+                    )
+                except ValueError:
+                    pass
+                if not can_view_email:
+                    can_view_email = self.request.user.has_event_permission(
+                        self.request.organizer,
+                        event,
+                        "can_view_orders",
+                        request=self.request,
+                    )
+                if can_view_email:
+                    qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                else:
+                    qs = qs.filter(Q(user__fullname__icontains=search))
 
             qs = qs.annotate(
                 shifts_assigned=Count("user__shift_assignments", filter=Q(user__shift_assignments__shift__event=event)),
@@ -1298,7 +1318,9 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["roles"] = TeamRole.objects.filter(event=self.request.event)
+        event = self.request.event
+        with scope(event=event):
+            ctx["roles"] = list(TeamRole.objects.filter(event=event))
 
         can_view_email = False
         try:

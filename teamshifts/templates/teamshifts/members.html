@@ -60,9 +60,7 @@
                         <td>{{ member.shifts_assigned }}</td>
                         <td>
                             {% if member.hours_scheduled %}
-                                {% blocktrans with hours=member.hours_scheduled|time:"H:i" trimmed %}
-                                    {{ hours }}
-                                {% endblocktrans %}
+                                {{ member.hours_scheduled }}
                             {% else %}
                                 -
                             {% endif %}
