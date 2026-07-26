@@ -90,7 +90,8 @@
                                         {% else %}
                                             <button type="button" class="btn btn-danger btn-sm disabled">{% trans "Rejected" %}</button>
                                         {% endif %}
-                                        <button type="button" class="btn btn-sm {% if app.status == 'pending' %}btn-warning{% elif app.status == 'accepted' %}btn-success{% else %}btn-danger{% endif %} dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        <button type="button" class="btn btn-sm {% if app.status == 'pending' %}btn-warning{% elif app.status == 'accepted' %}btn-success{% else %}btn-danger{% endif %} dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="{% trans 'Change status' %}" title="{% trans 'Change status' %}">
+                                            <span class="sr-only">{% trans "Change status" %}</span>
                                             <span class="caret"></span>
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-right">
