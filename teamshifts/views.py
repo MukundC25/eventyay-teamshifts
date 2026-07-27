@@ -280,20 +280,20 @@ class TeamRoleEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
-        form = TeamRoleForm(instance=role)
+            form = TeamRoleForm(instance=role)
         return render(request, self.template_name, {"form": form, "role": role})
 
     def post(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
-        form = TeamRoleForm(request.POST, instance=role)
-        with scope(event=request.event):
-            is_valid = form.is_valid()
-            if is_valid:
+            form = TeamRoleForm(request.POST, instance=role)
+            if form.is_valid():
                 form.save()
-        if is_valid:
-            messages.success(request, _("Role '%s' updated.") % role.name)
-            return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
+                messages.success(request, _("Role '%s' updated.") % role.name)
+                return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
+
+            # Refresh the role from DB to discard any invalid form data applied to the instance
+            role.refresh_from_db()
         return render(request, self.template_name, {"form": form, "role": role})
 
 
