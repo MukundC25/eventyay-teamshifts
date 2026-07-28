@@ -1503,7 +1503,7 @@ class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
             shift.delete()
             return JsonResponse({'status': 'ok'})
 
-class ShiftScheduleVolunteersAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
     permission = 'can_change_event_settings'
     
     def get(self, request, *args, **kwargs):
@@ -1513,15 +1513,15 @@ class ShiftScheduleVolunteersAPIView(EventPermissionRequiredMixin, View):
         event = request.event
         with scope(event=event):
             apps = TeamMemberApplication.objects.filter(event=event, status='approved').select_related('user')
-            volunteers = []
+            members = []
             for app in apps:
                 if app.user:
-                    volunteers.append({
+                    members.append({
                         'id': app.user.id,
                         'name': app.user.get_full_name() or app.user.email,
                         'email': app.user.email
                     })
-            return JsonResponse(volunteers, safe=False)
+            return JsonResponse(members, safe=False)
 
 class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
     permission = 'can_change_event_settings'

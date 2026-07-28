@@ -179,9 +179,9 @@ urlpatterns = [
         name="api_shift_detail",
     ),
     path(
-        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/volunteers/",
-        csrf_exempt(views.ShiftScheduleVolunteersAPIView.as_view()),
-        name="api_volunteers",
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/members/",
+        csrf_exempt(views.ShiftScheduleMembersAPIView.as_view()),
+        name="api_members",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/assignments/",
