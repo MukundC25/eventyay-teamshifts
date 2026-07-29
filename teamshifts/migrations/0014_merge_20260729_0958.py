@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('teamshifts', '0011_teammemberapplication_arrived_and_more'),
-        ('teamshifts', '0013_merge_20260723_1920'),
+        ("teamshifts", "0011_teammemberapplication_arrived_and_more"),
+        ("teamshifts", "0013_merge_20260723_1920"),
     ]
 
-    operations = [
-    ]
+    operations = []
