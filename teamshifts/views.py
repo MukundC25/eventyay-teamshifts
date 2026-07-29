@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings as django_settings
 from django.contrib import messages
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, Sum
 from django.forms import inlineformset_factory
 from django.http import Http404, HttpResponse, JsonResponse
@@ -13,7 +13,7 @@ from django.utils.formats import date_format
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _, ngettext
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
-from django_scopes import scope, scopes_disabled
+from django_scopes import scope
 from eventyay.base.i18n import LazyI18nString
 from eventyay.base.templatetags.rich_text import rich_text
 from eventyay.control.permissions import EventPermissionRequiredMixin
@@ -497,7 +497,6 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Pagin
         event = self.request.event
         with scope(event=event):
             status_filter = self.request.GET.get("status")
-            role_filter = self.request.GET.get("role")
             search = self.request.GET.get("q", "").strip()
 
             try:
@@ -700,22 +699,17 @@ class PublicApplyView(FormView):
             return self.form_invalid(form)
         full_name = form.cleaned_data.get("full_name", "").strip()
         with scope(event=event):
-            try:
-                application, created = TeamMemberApplication.objects.get_or_create(
-                    event=event,
-                    user=self.request.user,
-                    defaults={
-                        "availability_notes": form.cleaned_data.get("availability_notes", ""),
-                        "phone": form.cleaned_data.get("phone", ""),
-                    },
-                )
-            except IntegrityError:
-                created = False
-                application = TeamMemberApplication.objects.filter(event=event, user=self.request.user).first()
-
-            if not created:
+            if TeamMemberApplication.objects.filter(event=event, user=self.request.user).exists():
                 messages.error(self.request, _("You have already submitted an application for this event."))
                 return self.form_invalid(form)
+
+            application = TeamMemberApplication.objects.create(
+                event=event,
+                user=self.request.user,
+                availability_notes=form.cleaned_data.get("availability_notes", ""),
+                phone=form.cleaned_data.get("phone", ""),
+            )
+
             for question, answer_text in form.get_question_answers():
                 TeamApplicationAnswer.objects.create(application=application, question=question, answer=answer_text)
         if full_name and full_name != self.request.user.fullname:
