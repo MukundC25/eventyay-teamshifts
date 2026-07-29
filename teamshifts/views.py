@@ -1257,13 +1257,9 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
     def get_queryset(self):
         event = self.request.event
         with scope(event=event):
-            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user", "role")
+            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
 
             search = self.request.GET.get("q", "").strip()
-            role_filter = self.request.GET.get("role")
-
-            if role_filter and role_filter.isdigit():
-                qs = qs.filter(role_id=int(role_filter))
 
             if search:
                 can_view_email = False
