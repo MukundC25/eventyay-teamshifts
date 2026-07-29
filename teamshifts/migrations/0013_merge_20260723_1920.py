@@ -4,11 +4,9 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('teamshifts', '0010_remove_shift_capacity_remove_shift_role_and_more'),
-        ('teamshifts', '0012_teamrole_is_restricted'),
+        ("teamshifts", "0010_remove_shift_capacity_remove_shift_role_and_more"),
+        ("teamshifts", "0012_teamrole_is_restricted"),
     ]
 
-    operations = [
-    ]
+    operations = []

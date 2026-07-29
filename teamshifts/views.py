@@ -1,6 +1,7 @@
 import json
 from datetime import timedelta
 
+import dateutil.parser
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.db import IntegrityError, transaction
@@ -11,11 +12,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.timezone import now
-from django.utils.translation import gettext_lazy as _, ngettext
+from django.utils.translation import get_language, get_language_info, gettext_lazy as _, ngettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
 from django_scopes import scope, scopes_disabled
 from eventyay.base.i18n import LazyI18nString
+from eventyay.base.models import User
 from eventyay.base.templatetags.rich_text import rich_text
 from eventyay.control.permissions import EventPermissionRequiredMixin
 from eventyay.control.views import PaginationMixin
@@ -657,8 +659,8 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
                     Prefetch(
                         "user__shift_assignments",
                         queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
-                        to_attr="event_assignments"
-                    )
+                        to_attr="event_assignments",
+                    ),
                 ),
                 pk=kwargs["pk"],
                 event=event,
@@ -1270,9 +1272,7 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
             qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
             qs = qs.prefetch_related(
                 Prefetch(
-                    "user__shift_assignments",
-                    queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
-                    to_attr="event_assignments"
+                    "user__shift_assignments", queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"), to_attr="event_assignments"
                 )
             )
 
@@ -1348,59 +1348,62 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             application.arrived = not application.arrived
             application.save(update_fields=["arrived"])
             return JsonResponse({"success": True, "arrived": application.arrived})
+
+
 from django.http import JsonResponse
+
+
 class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
+    permission = "can_change_event_settings"
+
     def get(self, request, *args, **kwargs):
         event = request.event
         data = {
-            'version': None,
-            'event_start': event.date_from.isoformat() if event.date_from else '',
-            'event_end': event.date_to.isoformat() if event.date_to else '',
-            'timezone': event.timezone,
-            'locales': ['en'],
-            'rooms': [],
-            'tracks': [],
-            'speakers': [],
-            'talks': [],
-            'warnings': {},
-            'roles': []
+            "version": None,
+            "event_start": event.date_from.isoformat() if event.date_from else "",
+            "event_end": event.date_to.isoformat() if event.date_to else "",
+            "timezone": event.timezone,
+            "locales": ["en"],
+            "rooms": [],
+            "tracks": [],
+            "speakers": [],
+            "talks": [],
+            "warnings": {},
+            "roles": [],
         }
-        
+
         roles = event.team_roles.all()
         for role in roles:
-            data['roles'].append({
-                'id': role.id,
-                'name': {'en': role.name}
-            })
-            
+            data["roles"].append({"id": role.id, "name": {"en": role.name}})
+
         locations = event.shift_locations.all()
         for loc in locations:
-            data['rooms'].append({'id': loc.id, 'name': {'en': loc.name}, 'description': {'en': loc.description or ''}})
-        shifts = event.shifts.all().prefetch_related('role_assignments', 'role_assignments__role')
+            data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": loc.description or ""}})
+        shifts = event.shifts.all().prefetch_related("role_assignments", "role_assignments__role")
         for shift in shifts:
             roles_data = []
             for role_assignment in shift.role_assignments.all():
                 assignments = []
                 for assignment in shift.assignments.filter(team_member__isnull=False, role_id=role_assignment.role.id):
-                    assignments.append({
-                        'id': assignment.team_member.id,
-                        'name': assignment.team_member.get_full_name() or assignment.team_member.email
-                    })
-                roles_data.append({'id': role_assignment.role.id, 'name': {'en': role_assignment.role.name}, 'capacity': role_assignment.capacity, 'assigned': assignments})
-            data['talks'].append({
-                'id': shift.id,
-                'code': str(shift.id),
-                'title': {'en': shift.name or 'Shift'},
-                'abstract': '',
-                'description': shift.description,
-                'room': shift.location_id,
-                'start': shift.start_time.isoformat() if shift.start_time else '',
-                'end': shift.end_time.isoformat() if shift.end_time else '',
-                'duration': int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0,
-                'roles': roles_data,
-                'state': 'confirmed'
-            })
+                    assignments.append({"id": assignment.team_member.id, "name": assignment.team_member.get_full_name() or assignment.team_member.email})
+                roles_data.append(
+                    {"id": role_assignment.role.id, "name": {"en": role_assignment.role.name}, "capacity": role_assignment.capacity, "assigned": assignments}
+                )
+            data["talks"].append(
+                {
+                    "id": shift.id,
+                    "code": str(shift.id),
+                    "title": {"en": shift.name or "Shift"},
+                    "abstract": "",
+                    "description": shift.description,
+                    "room": shift.location_id,
+                    "start": shift.start_time.isoformat() if shift.start_time else "",
+                    "end": shift.end_time.isoformat() if shift.end_time else "",
+                    "duration": int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0,
+                    "roles": roles_data,
+                    "state": "confirmed",
+                }
+            )
         return JsonResponse(data)
 
     @csrf_exempt
@@ -1411,46 +1414,42 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
         import json
 
         import dateutil.parser
-        from django.http import JsonResponse
 
-        from teamshifts.models import Shift, ShiftLocation, ShiftRoleAssignment
-        
         data = json.loads(request.body.decode())
         event = request.event
         with scope(event=event):
-            start = dateutil.parser.parse(data.get('start')) if data.get('start') else None
-            end = dateutil.parser.parse(data.get('end')) if data.get('end') else None
-            room_id = data.get('room')
+            start = dateutil.parser.parse(data.get("start")) if data.get("start") else None
+            end = dateutil.parser.parse(data.get("end")) if data.get("end") else None
+            room_id = data.get("room")
             if isinstance(room_id, dict):
-                room_id = room_id.get('id')
-                
+                room_id = room_id.get("id")
+
             location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
-            
+
             shift = Shift.objects.create(
                 event=event,
-                name=data.get('title', {}).get('en', 'Shift'),
-                description=data.get('description', ''),
+                name=data.get("title", {}).get("en", "Shift"),
+                description=data.get("description", ""),
                 location=location,
                 start_time=start,
-                end_time=end
+                end_time=end,
             )
-            
-            for role_data in data.get('roles', []):
-                role_id = role_data.get('id')
-                capacity = role_data.get('capacity', 1)
+
+            for role_data in data.get("roles", []):
+                role_id = role_data.get("id")
+                capacity = role_data.get("capacity", 1)
                 if role_id:
-                    ShiftRoleAssignment.objects.create(
-                        shift=shift,
-                        role_id=role_id,
-                        capacity=capacity
-                    )
-                    
-            return JsonResponse({'id': shift.id})
+                    ShiftRoleAssignment.objects.create(shift=shift, role_id=role_id, capacity=capacity)
+
+            return JsonResponse({"id": shift.id})
+
 
 from django.utils.decorators import method_decorator
+
+
 class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
-    
+    permission = "can_change_event_settings"
+
     @csrf_exempt
     def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
@@ -1459,88 +1458,67 @@ class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
         import json
 
         import dateutil.parser
-        from django.http import JsonResponse
-        from django.shortcuts import get_object_or_404
 
-        from teamshifts.models import Shift, ShiftLocation, ShiftRoleAssignment
-        
         event = request.event
         with scope(event=event):
-            shift = get_object_or_404(Shift, pk=kwargs['pk'], event=event)
+            shift = get_object_or_404(Shift, pk=kwargs["pk"], event=event)
             data = json.loads(request.body.decode())
-            
-            if 'start' in data:
-                shift.start_time = dateutil.parser.parse(data['start'])
-            if 'end' in data:
-                shift.end_time = dateutil.parser.parse(data['end'])
-            if 'room' in data:
-                room_id = data['room']
+
+            if "start" in data:
+                shift.start_time = dateutil.parser.parse(data["start"])
+            if "end" in data:
+                shift.end_time = dateutil.parser.parse(data["end"])
+            if "room" in data:
+                room_id = data["room"]
                 if isinstance(room_id, dict):
-                    room_id = room_id.get('id')
+                    room_id = room_id.get("id")
                 shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
-            if 'title' in data:
-                shift.name = data['title'].get('en', shift.name)
-            if 'description' in data:
-                shift.description = data['description']
-                
+            if "title" in data:
+                shift.name = data["title"].get("en", shift.name)
+            if "description" in data:
+                shift.description = data["description"]
+
             shift.save()
-            
-            if 'roles' in data:
+
+            if "roles" in data:
                 shift.role_assignments.all().delete()
-                for role_data in data['roles']:
-                    role_id = role_data.get('id')
-                    capacity = role_data.get('capacity', 1)
+                for role_data in data["roles"]:
+                    role_id = role_data.get("id")
+                    capacity = role_data.get("capacity", 1)
                     if role_id:
-                        ShiftRoleAssignment.objects.create(
-                            shift=shift,
-                            role_id=role_id,
-                            capacity=capacity
-                        )
-            elif 'role' in data and 'capacity' in data:
+                        ShiftRoleAssignment.objects.create(shift=shift, role_id=role_id, capacity=capacity)
+            elif "role" in data and "capacity" in data:
                 shift.role_assignments.all().delete()
-                if data['role']:
-                    ShiftRoleAssignment.objects.create(
-                        shift=shift,
-                        role_id=data['role'],
-                        capacity=data.get('capacity', 1)
-                    )
-                        
-            return JsonResponse({'status': 'ok'})
+                if data["role"]:
+                    ShiftRoleAssignment.objects.create(shift=shift, role_id=data["role"], capacity=data.get("capacity", 1))
+
+            return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
-        from django.http import JsonResponse
-        from django.shortcuts import get_object_or_404
-
-        from teamshifts.models import Shift
         event = request.event
         with scope(event=event):
-            shift = get_object_or_404(Shift, pk=kwargs['pk'], event=event)
+            shift = get_object_or_404(Shift, pk=kwargs["pk"], event=event)
             shift.delete()
-            return JsonResponse({'status': 'ok'})
+            return JsonResponse({"status": "ok"})
+
 
 class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
-    
-    def get(self, request, *args, **kwargs):
-        from django.http import JsonResponse
-        from teamshifts.models import TeamMemberApplication, ApplicationStatus
+    permission = "can_change_event_settings"
 
+    def get(self, request, *args, **kwargs):
         event = request.event
         with scope(event=event):
-            apps = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related('user')
+            apps = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
             members = []
             for app in apps:
                 if app.user:
-                    members.append({
-                        'id': app.user.id,
-                        'name': app.user.get_full_name() or app.user.email,
-                        'email': app.user.email
-                    })
-            return JsonResponse({'members': members})
+                    members.append({"id": app.user.id, "name": app.user.get_full_name() or app.user.email, "email": app.user.email})
+            return JsonResponse({"members": members})
+
 
 class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
-    
+    permission = "can_change_event_settings"
+
     @csrf_exempt
     def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
@@ -1548,69 +1526,58 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         import json
 
-        from django.http import JsonResponse
-        from django.shortcuts import get_object_or_404
-        from eventyay.base.models import User
-
-        from teamshifts.models import Shift, ShiftAssignment
-        
         event = request.event
         with scope(event=event):
             data = json.loads(request.body.decode())
-            shift_id = data.get('shift_id')
-            user_id = data.get('user_id')
-            role_id = data.get('role_id')
-            
+            shift_id = data.get("shift_id")
+            user_id = data.get("user_id")
+            role_id = data.get("role_id")
+
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
             user = get_object_or_404(User, pk=user_id)
-            
-            ShiftAssignment.objects.get_or_create(
-                shift=shift,
-                team_member=user,
-                role_id=role_id,
-                defaults={'assigned_by': request.user}
-            )
-            return JsonResponse({'status': 'ok'})
+
+            ShiftAssignment.objects.get_or_create(shift=shift, team_member=user, role_id=role_id, defaults={"assigned_by": request.user})
+            return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
         import json
 
-        from django.http import JsonResponse
-        from django.shortcuts import get_object_or_404
-
-        from teamshifts.models import Shift, ShiftAssignment
-        
         event = request.event
         with scope(event=event):
             data = json.loads(request.body.decode())
-            shift_id = data.get('shift_id')
-            user_id = data.get('user_id')
-            role_id = data.get('role_id')
-            
+            shift_id = data.get("shift_id")
+            user_id = data.get("user_id")
+            role_id = data.get("role_id")
+
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
             assignment = ShiftAssignment.objects.filter(shift=shift, team_member_id=user_id, role_id=role_id).first()
             if assignment:
                 assignment.delete()
-            return JsonResponse({'status': 'ok'})
+            return JsonResponse({"status": "ok"})
+
 
 class ShiftScheduleAvailabilitiesAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
+    permission = "can_change_event_settings"
+
     def get(self, request, *args, **kwargs):
-        return JsonResponse({'rooms': {}, 'talks': {}})
+        return JsonResponse({"rooms": {}, "talks": {}})
+
 
 class ShiftScheduleWarningsAPIView(EventPermissionRequiredMixin, View):
-    permission = 'can_change_event_settings'
+    permission = "can_change_event_settings"
+
     def get(self, request, *args, **kwargs):
         return JsonResponse({})
 
+
 class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = 'can_change_event_settings'
-    template_name = 'teamshifts/schedule_grid.html'
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/schedule_grid.html"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        from django.utils.translation import get_language, get_language_info
+
         language_information = get_language_info(get_language())
-        path = language_information.get('path', language_information.get('code', 'en'))
-        ctx['gettext_language'] = path.replace('-', '_')
+        path = language_information.get("path", language_information.get("code", "en"))
+        ctx["gettext_language"] = path.replace("-", "_")
         return ctx
