@@ -22,18 +22,20 @@
                 <span class="fa fa-arrow-left"></span> {% trans "Back to applications list" %}
             </a>
         {% endif %}
-        <h2 class="teamshifts-detail-title">
-            {% trans "Application:" %} {{ application.user.get_full_name }}
-        </h2>
-        <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}"
-              method="post" class="helper-display-inline pull-right" id="detail-status-form">
-            {% csrf_token %}
-            <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ application.status }}'; }">
-                {% for value, label in status_choices %}
-                    <option style="color: black; background: white;" value="{{ value }}" {% if value == application.status %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </form>
+        <div class="teamshifts-detail-title-container">
+            <h2 class="teamshifts-detail-title">
+                {% trans "Application:" %} {{ application.user.get_full_name }}
+            </h2>
+            <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}?next={{ request.path|urlencode }}"
+                  method="post" class="teamshifts-inline-form" id="detail-status-form">
+                {% csrf_token %}
+                <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ application.status }}'; }">
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if value == application.status %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
     </div>
 
     <div class="panel panel-default">

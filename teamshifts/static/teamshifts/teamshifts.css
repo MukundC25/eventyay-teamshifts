@@ -100,9 +100,15 @@ label .optional {
     margin-bottom: 20px;
 }
 
-.teamshifts-detail-title {
+.teamshifts-detail-title-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 20px;
-    margin-bottom: 0;
+}
+
+.teamshifts-detail-title {
+    margin: 0;
 }
 
 .teamshifts-status-dropdown option {

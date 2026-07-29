@@ -10,6 +10,7 @@ from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonRespo
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.formats import date_format
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _, ngettext
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
@@ -592,6 +593,11 @@ class ApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
                     transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_REJECTED))
                 else:
                     messages.success(request, _("Application status updated to %s.") % application.get_status_display())
+
+            next_url = request.GET.get("next") or request.POST.get("next")
+            if next_url and url_has_allowed_host_and_scheme(url=next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
+
         return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
 
 
@@ -660,6 +666,7 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
             )
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
+            ctx["status_choices"] = ApplicationStatus.choices
         return ctx
 
 
