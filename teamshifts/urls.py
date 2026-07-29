@@ -98,7 +98,7 @@ urlpatterns = [
         name="question_reorder",
     ),
     path(
-        "teamshifts/event/<orgslug:organizer>/<slug:event>/settings/<int:pk>/toggle/",
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/settings/application-form/<int:pk>/toggle/",
         views.QuestionToggleView.as_view(),
         name="question_toggle",
     ),
