@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, Sum
+from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -42,6 +42,7 @@ from .models import (
     CallForTeamMembers,
     EmailTemplateRoles,
     Shift,
+    ShiftAssignment,
     ShiftLocation,
     ShiftRoleAssignment,
     TeamApplicationAnswer,
@@ -651,7 +652,14 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
         event = self.request.event
         with scope(event=event):
             app = get_object_or_404(
-                TeamMemberApplication.objects.select_related("user").prefetch_related("answers__question"),
+                TeamMemberApplication.objects.select_related("user").prefetch_related(
+                    "answers__question",
+                    Prefetch(
+                        "user__shift_assignments",
+                        queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                        to_attr="event_assignments"
+                    )
+                ),
                 pk=kwargs["pk"],
                 event=event,
             )
@@ -1260,6 +1268,13 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
         event = self.request.event
         with scope(event=event):
             qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
+            qs = qs.prefetch_related(
+                Prefetch(
+                    "user__shift_assignments",
+                    queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                    to_attr="event_assignments"
+                )
+            )
 
             search = self.request.GET.get("q", "").strip()
             role_filter = self.request.GET.get("role")
@@ -1367,7 +1382,7 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             roles_data = []
             for role_assignment in shift.role_assignments.all():
                 assignments = []
-                for assignment in shift.assignments.filter(team_member__isnull=False):
+                for assignment in shift.assignments.filter(team_member__isnull=False, role_id=role_assignment.role.id):
                     assignments.append({
                         'id': assignment.team_member.id,
                         'name': assignment.team_member.get_full_name() or assignment.team_member.email
@@ -1508,11 +1523,11 @@ class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
     
     def get(self, request, *args, **kwargs):
         from django.http import JsonResponse
+        from teamshifts.models import TeamMemberApplication, ApplicationStatus
 
-        from teamshifts.models import TeamMemberApplication
         event = request.event
         with scope(event=event):
-            apps = TeamMemberApplication.objects.filter(event=event, status='approved').select_related('user')
+            apps = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related('user')
             members = []
             for app in apps:
                 if app.user:
@@ -1521,7 +1536,7 @@ class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
                         'name': app.user.get_full_name() or app.user.email,
                         'email': app.user.email
                     })
-            return JsonResponse(members, safe=False)
+            return JsonResponse({'members': members})
 
 class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
     permission = 'can_change_event_settings'
@@ -1544,6 +1559,7 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
             data = json.loads(request.body.decode())
             shift_id = data.get('shift_id')
             user_id = data.get('user_id')
+            role_id = data.get('role_id')
             
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
             user = get_object_or_404(User, pk=user_id)
@@ -1551,6 +1567,7 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
             ShiftAssignment.objects.get_or_create(
                 shift=shift,
                 team_member=user,
+                role_id=role_id,
                 defaults={'assigned_by': request.user}
             )
             return JsonResponse({'status': 'ok'})
@@ -1568,9 +1585,10 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
             data = json.loads(request.body.decode())
             shift_id = data.get('shift_id')
             user_id = data.get('user_id')
+            role_id = data.get('role_id')
             
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
-            assignment = ShiftAssignment.objects.filter(shift=shift, team_member_id=user_id).first()
+            assignment = ShiftAssignment.objects.filter(shift=shift, team_member_id=user_id, role_id=role_id).first()
             if assignment:
                 assignment.delete()
             return JsonResponse({'status': 'ok'})

@@ -57,7 +57,17 @@
                 </tr>
                 <tr>
                     <th>{% trans "Role" %}</th>
-                    <td><span class="label label-info">{{ application.role.name }}</span></td>
+                    <td>
+                        {% if application.user.event_assignments %}
+                            {% for assignment in application.user.event_assignments %}
+                                <span class="label label-default">{{ assignment.role.name }}</span>
+                            {% endfor %}
+                        {% elif application.role %}
+                            <span class="label label-info">{{ application.role.name }}</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <th>{% trans "Status" %}</th>
