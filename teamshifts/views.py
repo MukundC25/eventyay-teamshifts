@@ -1562,14 +1562,11 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
-        import json
-
         event = request.event
         with scope(event=event):
-            data = json.loads(request.body.decode())
-            shift_id = data.get("shift_id")
-            user_id = data.get("user_id")
-            role_id = data.get("role_id")
+            shift_id = request.GET.get("shift_id")
+            user_id = request.GET.get("user_id")
+            role_id = request.GET.get("role_id")
 
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
             assignment = ShiftAssignment.objects.filter(shift=shift, team_member_id=user_id, role_id=role_id).first()
