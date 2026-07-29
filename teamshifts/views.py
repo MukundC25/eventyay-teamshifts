@@ -612,7 +612,7 @@ class BulkApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin,
                     event=event,
                     pk__in=app_ids,
                     status=ApplicationStatus.PENDING,
-                ).select_related("user", "role")
+                ).select_related("user")
             )
 
             if not apps:
@@ -1259,7 +1259,7 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
     def get_queryset(self):
         event = self.request.event
         with scope(event=event):
-            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user", "role")
+            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
 
             search = self.request.GET.get("q", "").strip()
             role_filter = self.request.GET.get("role")
