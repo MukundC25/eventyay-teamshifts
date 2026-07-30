@@ -1,7 +1,12 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
+{% load static %}
 
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/members.js' %}"></script>
+{% endblock %}
 {% block title %}{% trans "Members" %} :: {{ request.event.name }}{% endblock %}
 
 {% block content %}
@@ -90,48 +95,4 @@
             </p>
         </div>
     {% endif %}
-
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const forms = document.querySelectorAll('.toggle-arrived-form');
-            forms.forEach(form => {
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const button = form.querySelector('button');
-                    const originalHtml = button.innerHTML;
-                    button.disabled = true;
-                    button.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
-
-                    fetch(form.action, {
-                        method: 'POST',
-                        body: new FormData(form),
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        button.disabled = false;
-                        if (data.success) {
-                            if (data.arrived) {
-                                button.className = 'btn btn-sm btn-success';
-                                button.innerHTML = '<i class="fa fa-check"></i> ' + '{% trans "Arrived"|escapejs %}';
-                            } else {
-                                button.className = 'btn btn-sm btn-default';
-                                button.innerHTML = '<i class="fa fa-times"></i> ' + '{% trans "Not arrived"|escapejs %}';
-                            }
-                        } else {
-                            button.innerHTML = originalHtml;
-                            alert('{% trans "An error occurred."|escapejs %}');
-                        }
-                    })
-                    .catch(error => {
-                        button.disabled = false;
-                        button.innerHTML = originalHtml;
-                        console.error('Error:', error);
-                    });
-                });
-            });
-        });
-    </script>
 {% endblock %}
