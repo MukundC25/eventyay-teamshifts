@@ -1,0 +1,106 @@
+{% extends "pretixpresale/event/base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block pagetitle %}{% trans "Shift Schedule" %}{% endblock %}
+{% block testmode_alert %}{% endblock %}
+
+{% block custom_header %}
+  {{ block.super }}
+  <link rel="stylesheet" type="text/css" href="{% static 'teamshifts/teamshifts.css' %}">
+  <script type="module" src="{% static 'teamshifts/shift_schedule.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<h2>{% trans "Shift Schedule" %}</h2>
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+{% if no_shifts %}
+  <div class="alert alert-info">
+    {% trans "No shifts have been scheduled yet. Check back soon." %}
+  </div>
+{% else %}
+  {% for day, shifts in by_date %}
+    <h3 class="ts-schedule-day-heading">{{ day }}</h3>
+    <div class="table-responsive">
+      <div class="ts-shift-grid">
+        {% for item in shifts %}
+          {% with shift=item.shift %}
+            <div class="ts-shift-card ts-capacity-{{ item.capacity_status }}{% if item.is_claimed_by_me %} ts-shift-mine{% endif %}"
+                 data-shift-id="{{ shift.pk }}">
+              <div class="ts-shift-card-header">
+                <span class="ts-shift-time">
+                  {{ shift.start_time|time:"H:i" }}–{{ shift.end_time|time:"H:i" }}
+                </span>
+                <span class="ts-shift-name">{{ shift.name|default:shift.location.name|default:"—" }}</span>
+                {% if item.location %}
+                  <span class="ts-shift-location label label-default">{{ item.location.name }}</span>
+                {% endif %}
+                <span class="ts-capacity-badge label
+                  {% if item.capacity_status == 'full' %}label-success
+                  {% elif item.capacity_status == 'partial' %}label-warning
+                  {% else %}label-danger{% endif %}">
+                  {% if item.capacity_status == 'full' %}{% trans "Full" %}
+                  {% elif item.capacity_status == 'partial' %}{% trans "Filling up" %}
+                  {% else %}{% trans "Open" %}{% endif %}
+                </span>
+              </div>
+
+              {% if item.role_rows %}
+                <ul class="ts-role-list">
+                  {% for row in item.role_rows %}
+                    <li>
+                      <span class="ts-role-name">{{ row.role.name }}</span>
+                      <span class="ts-role-capacity text-muted">
+                        {{ row.assigned_count }}/{{ row.capacity }}
+                        {% if row.is_restricted %}
+                          <span class="label label-info" title="{% trans 'Organizer assigns this role' %}">
+                            <i class="fa fa-lock"></i> {% trans "Restricted" %}
+                          </span>
+                        {% endif %}
+                      </span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+
+              <div class="ts-shift-card-footer">
+                {% if item.is_claimed_by_me %}
+                  <span class="label label-success"><i class="fa fa-check"></i> {% trans "You're signed up" %}</span>
+                  <a href="{% url 'plugins:teamshifts:public_shift_detail' organizer=request.organizer.slug event=request.event.slug pk=shift.pk %}"
+                     class="btn btn-xs btn-default">
+                    {% trans "View / Withdraw" %}
+                  </a>
+                {% else %}
+                  {% with can_claim=False %}
+                    {# Any non-restricted role with open capacity allows a claim #}
+                    {% for row in item.role_rows %}
+                      {% if not row.is_restricted and not row.is_full %}
+                        <form method="post"
+                              action="{% url 'plugins:teamshifts:public_shift_claim' organizer=request.organizer.slug event=request.event.slug pk=shift.pk %}"
+                              class="ts-claim-form">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-primary ts-btn-claim">
+                            {% trans "Sign Up" %}
+                          </button>
+                        </form>
+                      {% endif %}
+                    {% endfor %}
+                  {% endwith %}
+                  <a href="{% url 'plugins:teamshifts:public_shift_detail' organizer=request.organizer.slug event=request.event.slug pk=shift.pk %}"
+                     class="btn btn-xs btn-link">{% trans "Details" %}</a>
+                {% endif %}
+              </div>
+            </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

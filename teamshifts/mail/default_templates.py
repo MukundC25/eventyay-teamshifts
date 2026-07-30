@@ -39,6 +39,19 @@ REJECTED_TEXT = LazyI18nString.from_gettext(
 )
 
 
+SHIFT_DROPPED_SUBJECT = LazyI18nString.from_gettext(_("[{event_name}] A volunteer dropped a shift"))
+SHIFT_DROPPED_TEXT = LazyI18nString.from_gettext(
+    _(
+        "Hi,\n\n"
+        "This is an automated notification from {event_name}.\n\n"
+        "Volunteer {full_name} has withdrawn from a shift, freeing up a slot. "
+        "You may want to review the shift schedule and reassign if needed.\n\n"
+        "Best regards,\n"
+        "The {event_name} system"
+    )
+)
+
+
 def get_default_template(role: str) -> tuple[LazyI18nString, LazyI18nString]:
     from ..models import EmailTemplateRoles
 
@@ -46,5 +59,6 @@ def get_default_template(role: str) -> tuple[LazyI18nString, LazyI18nString]:
         EmailTemplateRoles.APPLICATION_RECEIVED: (RECEIVED_SUBJECT, RECEIVED_TEXT),
         EmailTemplateRoles.APPLICATION_ACCEPTED: (ACCEPTED_SUBJECT, ACCEPTED_TEXT),
         EmailTemplateRoles.APPLICATION_REJECTED: (REJECTED_SUBJECT, REJECTED_TEXT),
+        EmailTemplateRoles.SHIFT_DROPPED: (SHIFT_DROPPED_SUBJECT, SHIFT_DROPPED_TEXT),
     }
     return mapping[role]

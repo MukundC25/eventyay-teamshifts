@@ -66,3 +66,128 @@ label .optional {
     margin-top: 12px;
     margin-bottom: 0;
 }
+
+/* ── Public shift schedule grid ─────────────────────────────────────────── */
+
+.ts-schedule-day-heading {
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border-bottom: 2px solid #e0e0e0;
+    padding-bottom: 0.25rem;
+}
+
+.ts-shift-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding-bottom: 1rem;
+}
+
+.ts-shift-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 240px;
+    max-width: 320px;
+    flex: 1 1 240px;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+}
+
+/* Capacity status left-border accent */
+.ts-shift-card.ts-capacity-open {
+    border-left: 4px solid #d9534f; /* red — needs volunteers */
+}
+
+.ts-shift-card.ts-capacity-partial {
+    border-left: 4px solid #f0ad4e; /* amber — filling up */
+}
+
+.ts-shift-card.ts-capacity-full {
+    border-left: 4px solid #5cb85c; /* green — full */
+}
+
+/* Highlight shifts the current user has claimed */
+.ts-shift-card.ts-shift-mine {
+    background: #f0faf0;
+}
+
+.ts-shift-card-header {
+    padding: 0.6rem 0.75rem 0.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    border-bottom: 1px solid #eee;
+}
+
+.ts-shift-time {
+    font-weight: 700;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.ts-shift-name {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.ts-shift-location {
+    font-size: 0.75rem;
+}
+
+.ts-capacity-badge {
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
+.ts-role-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    flex: 1;
+}
+
+.ts-role-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.1rem 0;
+}
+
+.ts-role-name {
+    color: #333;
+}
+
+.ts-role-capacity {
+    font-size: 0.78rem;
+    white-space: nowrap;
+    margin-left: 0.5rem;
+}
+
+.ts-shift-card-footer {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.ts-btn-claim {
+    font-size: 0.82rem;
+    padding: 2px 10px;
+}
+
+/* Responsive: single-column on narrow screens */
+@media (max-width: 480px) {
+    .ts-shift-card {
+        min-width: 100%;
+        max-width: 100%;
+    }
+}

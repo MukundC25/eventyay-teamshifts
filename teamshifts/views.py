@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from datetime import timedelta
 
 import dateutil.parser
@@ -1578,3 +1579,303 @@ class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixi
         path = language_information.get("path", language_information.get("code", "en"))
         ctx["gettext_language"] = path.replace("-", "_")
         return ctx
+# ─── Public volunteer-facing shift schedule views ──────────────────────────
+
+
+def _get_accepted_application(request, event):
+    """Return the accepted TeamMemberApplication for the current user, or None."""
+    with scope(event=event):
+        return (
+            TeamMemberApplication.objects.filter(
+                event=event, user=request.user, status=ApplicationStatus.ACCEPTED
+            ).first()
+        )
+
+
+class PublicShiftScheduleMixin:
+    """Auth + plugin-active + accepted-member gate shared by all public shift views."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if "teamshifts" not in request.event.get_plugins():
+            raise Http404
+        if not request.user.is_authenticated:
+            login_url = reverse("eventyay_common:auth.login")
+            return redirect(f"{login_url}?next={request.get_full_path()}")
+        self.event = request.event
+        self.organizer = request.organizer
+        self.member_application = _get_accepted_application(request, self.event)
+        if self.member_application is None:
+            messages.error(
+                request,
+                _("You need to be an accepted team member to view the shift schedule."),
+            )
+            return redirect(
+                reverse(
+                    "plugins:teamshifts:apply",
+                    kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
+                )
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
+    """Grid view: all shifts grouped by date and location column."""
+
+    template_name = "teamshifts/shift_schedule.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        event = self.event
+        user = self.request.user
+
+        with scope(event=event):
+            locations = list(ShiftLocation.objects.filter(event=event).order_by("position", "name"))
+            shifts = list(
+                Shift.objects.filter(event=event)
+                .select_related("location")
+                .prefetch_related("role_assignments__role", "assignments")
+                .order_by("start_time")
+            )
+
+            # Shifts the current user has already claimed
+            my_assignment_shift_ids = set(
+                ShiftAssignment.objects.filter(
+                    shift__event=event, team_member=user
+                ).values_list("shift_id", flat=True)
+            )
+
+            # Build enriched shift data for the template
+            enriched = []
+            for shift in shifts:
+                role_rows = []
+                for sra in shift.role_assignments.all():
+                    assigned_count = shift.assignments.count()
+                    # Per-role capacity tracking
+                    role_rows.append(
+                        {
+                            "role": sra.role,
+                            "capacity": sra.capacity,
+                            "assigned_count": assigned_count,
+                            "is_full": assigned_count >= sra.capacity,
+                            "is_restricted": sra.role.is_restricted,
+                        }
+                    )
+
+                total_capacity = sum(r["capacity"] for r in role_rows)
+                total_assigned = shift.assignments.count()
+                if total_assigned >= total_capacity:
+                    capacity_status = "full"
+                elif total_assigned > 0:
+                    capacity_status = "partial"
+                else:
+                    capacity_status = "open"
+
+                enriched.append(
+                    {
+                        "shift": shift,
+                        "role_rows": role_rows,
+                        "capacity_status": capacity_status,
+                        "is_claimed_by_me": shift.pk in my_assignment_shift_ids,
+                        "location": shift.location,
+                    }
+                )
+
+            # Group by date for the template rows
+            by_date = defaultdict(list)
+            for item in enriched:
+                day = item["shift"].start_time.date()
+                by_date[day].append(item)
+
+        ctx.update(
+            {
+                "event": event,
+                "locations": locations,
+                "by_date": sorted(by_date.items()),
+                "no_shifts": len(enriched) == 0,
+            }
+        )
+        return ctx
+
+
+class ShiftClaimView(PublicShiftScheduleMixin, View):
+    """POST-only: claim a shift slot with capacity enforcement."""
+
+    def post(self, request, *args, **kwargs):
+        event = self.event
+        shift_pk = kwargs["pk"]
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=shift_pk, event=event)
+            sra = shift.role_assignments.select_related("role").first()
+
+            if sra is None:
+                messages.error(request, _("This shift has no roles configured."))
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_schedule",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                    )
+                )
+
+            if sra.role.is_restricted:
+                messages.error(
+                    request,
+                    _("This shift requires organizer assignment — you cannot sign up directly."),
+                )
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_schedule",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                    )
+                )
+
+            # Capacity-safe assignment inside a transaction with row-lock
+            with transaction.atomic():
+                # Lock the ShiftRoleAssignment row to prevent concurrent over-booking
+                sra_locked = ShiftRoleAssignment.objects.select_for_update().get(pk=sra.pk)
+                current_count = shift.assignments.count()
+                if current_count >= sra_locked.capacity:
+                    messages.error(request, _("Sorry, this shift is now full."))
+                    return redirect(
+                        reverse(
+                            "plugins:teamshifts:public_shift_schedule",
+                            kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                        )
+                    )
+                assignment_obj, created = ShiftAssignment.objects.get_or_create(
+                    shift=shift,
+                    team_member=request.user,
+                    defaults={"assigned_by": None},
+                )
+
+            if created:
+                messages.success(request, _("You have been signed up for the shift."))
+            else:
+                messages.info(request, _("You were already signed up for this shift."))
+
+        return redirect(
+            reverse(
+                "plugins:teamshifts:public_shift_schedule",
+                kwargs={"organizer": self.organizer.slug, "event": event.slug},
+            )
+        )
+
+
+class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
+    """Per-shift detail page; shows withdraw button if user is assigned."""
+
+    template_name = "teamshifts/shift_detail.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        event = self.event
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=self.kwargs["pk"], event=event)
+            role_rows = []
+            for sra in shift.role_assignments.select_related("role").all():
+                role_rows.append(
+                    {
+                        "role": sra.role,
+                        "capacity": sra.capacity,
+                        "assigned_count": shift.assignments.count(),
+                        "is_restricted": sra.role.is_restricted,
+                    }
+                )
+
+            my_assignment = ShiftAssignment.objects.filter(
+                shift=shift, team_member=self.request.user
+            ).first()
+
+        ctx.update(
+            {
+                "event": event,
+                "shift": shift,
+                "role_rows": role_rows,
+                "my_assignment": my_assignment,
+            }
+        )
+        return ctx
+
+
+class ShiftWithdrawView(PublicShiftScheduleMixin, View):
+    """POST-only: drop a claimed shift and notify organizers."""
+
+    def post(self, request, *args, **kwargs):
+        event = self.event
+        shift_pk = kwargs["pk"]
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=shift_pk, event=event)
+            assignment = ShiftAssignment.objects.filter(
+                shift=shift, team_member=request.user
+            ).first()
+
+            if assignment is None:
+                messages.error(request, _("You are not signed up for this shift."))
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_detail",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug, "pk": shift_pk},
+                    )
+                )
+
+            assignment.delete()
+
+        messages.success(request, _("You have been withdrawn from the shift."))
+
+        # Notify organizers asynchronously on commit
+        transaction.on_commit(
+            lambda: _notify_organizers_shift_dropped(event, request.user, shift)
+        )
+
+        return redirect(
+            reverse(
+                "plugins:teamshifts:public_shift_schedule",
+                kwargs={"organizer": self.organizer.slug, "event": event.slug},
+            )
+        )
+
+
+def _notify_organizers_shift_dropped(event, volunteer, shift):
+    """Queue a notification email to organizer staff when a volunteer drops a shift."""
+    from eventyay.base.models import User
+
+    try:
+        cfm = event.call_for_team_members
+    except CallForTeamMembers.DoesNotExist:
+        return
+
+    try:
+        template = cfm.get_mail_template(EmailTemplateRoles.SHIFT_DROPPED)
+    except Exception:
+        return
+
+    # Target: team members with can_change_event_settings for this event
+    with scopes_disabled():
+        organizer_users = list(
+            User.objects.filter(
+                teams__organizer=event.organizer,
+                teams__can_change_event_settings=True,
+                teams__all_events=True,
+            ).distinct()
+        )
+        if not organizer_users:
+            organizer_users = list(
+                User.objects.filter(
+                    teams__organizer=event.organizer,
+                    teams__limit_events=event,
+                    teams__can_change_event_settings=True,
+                ).distinct()
+            )
+
+    if not organizer_users:
+        return
+
+    queue_email(
+        event=event,
+        subject=template.subject,
+        message=template.body,
+        recipients=organizer_users,
+        status_filter="",
+    )

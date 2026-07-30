@@ -1,0 +1,93 @@
+{% extends "pretixpresale/event/base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block pagetitle %}{{ shift.name|default:"Shift" }} — {% trans "Shift Detail" %}{% endblock %}
+{% block testmode_alert %}{% endblock %}
+
+{% block custom_header %}
+  {{ block.super }}
+  <link rel="stylesheet" type="text/css" href="{% static 'teamshifts/teamshifts.css' %}">
+{% endblock %}
+
+{% block content %}
+<h2>{{ shift.name|default:"—" }}</h2>
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <h3 class="panel-title">{% trans "Shift details" %}</h3>
+  </div>
+  <div class="panel-body">
+    <dl class="dl-horizontal">
+      <dt>{% trans "Time" %}</dt>
+      <dd>{{ shift.start_time|time:"H:i" }} – {{ shift.end_time|time:"H:i" }}, {{ shift.start_time|date:"DATE_FORMAT" }}</dd>
+
+      {% if shift.location %}
+        <dt>{% trans "Location" %}</dt>
+        <dd>{{ shift.location.name }}</dd>
+      {% endif %}
+
+      {% if shift.description %}
+        <dt>{% trans "Description" %}</dt>
+        <dd>{{ shift.description }}</dd>
+      {% endif %}
+    </dl>
+
+    {% if role_rows %}
+      <h4>{% trans "Roles" %}</h4>
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>{% trans "Role" %}</th>
+            <th>{% trans "Filled / Capacity" %}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in role_rows %}
+            <tr>
+              <td>{{ row.role.name }}</td>
+              <td>{{ row.assigned_count }}/{{ row.capacity }}</td>
+              <td>
+                {% if row.is_restricted %}
+                  <span class="label label-info"><i class="fa fa-lock"></i> {% trans "Organizer assigned" %}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+</div>
+
+{% if my_assignment %}
+  <div class="panel panel-success">
+    <div class="panel-heading">
+      <h3 class="panel-title"><i class="fa fa-check"></i> {% trans "You are signed up for this shift" %}</h3>
+    </div>
+    <div class="panel-body">
+      <p>{% trans "If you can no longer attend this shift, you can withdraw below." %}</p>
+      <form method="post"
+            action="{% url 'plugins:teamshifts:public_shift_withdraw' organizer=request.organizer.slug event=request.event.slug pk=shift.pk %}"
+            id="ts-withdraw-form">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger" id="ts-btn-withdraw">
+          <i class="fa fa-times"></i> {% trans "Withdraw from shift" %}
+        </button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+<a href="{% url 'plugins:teamshifts:public_shift_schedule' organizer=request.organizer.slug event=request.event.slug %}"
+   class="btn btn-default">
+  <i class="fa fa-arrow-left"></i> {% trans "Back to schedule" %}
+</a>
+{% endblock %}

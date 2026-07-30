@@ -159,7 +159,10 @@ class TeamRole(models.Model):
     is_restricted = models.BooleanField(
         default=False,
         verbose_name=_("Restricted role"),
-        help_text=_("If checked, volunteers cannot self-claim shifts for this role. It requires manual assignment by an organizer."),
+        help_text=_(
+            "If checked, volunteers cannot self-claim shifts for this role. "
+            "It requires manual assignment by an organizer."
+        ),
     )
     objects = ScopedManager(event="event")
 
@@ -501,6 +504,7 @@ class EmailTemplateRoles(models.TextChoices):
     APPLICATION_RECEIVED = "teamshifts.application.received", _("Application received")
     APPLICATION_ACCEPTED = "teamshifts.application.accepted", _("Application accepted")
     APPLICATION_REJECTED = "teamshifts.application.rejected", _("Application rejected")
+    SHIFT_DROPPED = "teamshifts.shift.dropped", _("Shift dropped by volunteer")
 
 
 class TeamShiftsEmailTemplate(models.Model):
