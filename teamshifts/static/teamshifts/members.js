@@ -23,9 +23,19 @@ function setButtonState(button, arrived) {
     button.className = arrived ? "btn btn-sm btn-success" : "btn btn-sm btn-default";
     const icon = document.createElement("i");
     icon.className = arrived ? "fa fa-check" : "fa fa-times";
-    button.innerHTML = "";
+    const label = document.createTextNode(` ${gettext(arrived ? "Arrived" : "Not arrived")}`);
+    button.replaceChildren(icon, label);
+}
+
+function setButtonLoading(button) {
+    button.replaceChildren();
+    const icon = document.createElement("i");
+    icon.className = "fa fa-spinner fa-spin";
     button.appendChild(icon);
-    button.appendChild(document.createTextNode(` ${gettext(arrived ? "Arrived" : "Not arrived")}`));
+}
+
+function restoreButtonChildren(button, originalChildren) {
+    button.replaceChildren(...originalChildren);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -33,21 +43,21 @@ document.addEventListener("DOMContentLoaded", () => {
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
             const button = form.querySelector("button");
-            const originalHtml = button.innerHTML;
+            const originalChildren = Array.from(button.childNodes).map((node) => node.cloneNode(true));
             button.disabled = true;
-            button.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+            setButtonLoading(button);
 
             try {
                 const data = await toggleArrived(form);
                 if (data.success) {
                     setButtonState(button, data.arrived);
                 } else {
-                    button.innerHTML = originalHtml;
+                    restoreButtonChildren(button, originalChildren);
                     alert(gettext("An error occurred."));
                 }
             } catch (error) {
                 console.error("Failed to toggle arrived status", error);
-                button.innerHTML = originalHtml;
+                restoreButtonChildren(button, originalChildren);
                 alert(gettext("An error occurred."));
             } finally {
                 button.disabled = false;
