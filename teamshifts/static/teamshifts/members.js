@@ -3,7 +3,7 @@ function gettext(msgid) {
 }
 
 /**
- * @throws {Error} when the network request fails
+ * @throws {Error} when the request fails (network error or non-2xx response)
  */
 async function toggleArrived(form) {
     const response = await fetch(form.action, {
@@ -13,17 +13,19 @@ async function toggleArrived(form) {
             "X-Requested-With": "XMLHttpRequest",
         },
     });
+    if (!response.ok) {
+        throw new Error(`Toggle arrived request failed with status ${response.status}`);
+    }
     return response.json();
 }
 
 function setButtonState(button, arrived) {
-    if (arrived) {
-        button.className = "btn btn-sm btn-success";
-        button.innerHTML = `<i class="fa fa-check"></i> ${gettext("Arrived")}`;
-    } else {
-        button.className = "btn btn-sm btn-default";
-        button.innerHTML = `<i class="fa fa-times"></i> ${gettext("Not arrived")}`;
-    }
+    button.className = arrived ? "btn btn-sm btn-success" : "btn btn-sm btn-default";
+    const icon = document.createElement("i");
+    icon.className = arrived ? "fa fa-check" : "fa fa-times";
+    button.innerHTML = "";
+    button.appendChild(icon);
+    button.appendChild(document.createTextNode(` ${gettext(arrived ? "Arrived" : "Not arrived")}`));
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch (error) {
                 console.error("Failed to toggle arrived status", error);
                 button.innerHTML = originalHtml;
+                alert(gettext("An error occurred."));
             } finally {
                 button.disabled = false;
             }
