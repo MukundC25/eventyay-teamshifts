@@ -8,16 +8,18 @@ from django.db.models import Count
 def dedupe_team_member_applications(apps, schema_editor):
     TeamMemberApplication = apps.get_model("teamshifts", "TeamMemberApplication")
     TeamApplicationAnswer = apps.get_model("teamshifts", "TeamApplicationAnswer")
+    status_priority = {"accepted": 2, "pending": 1, "rejected": 0}
     duplicates = TeamMemberApplication.objects.values("event_id", "user_id").annotate(c=Count("id")).filter(c__gt=1)
     for row in duplicates:
-        qs = TeamMemberApplication.objects.filter(event_id=row["event_id"], user_id=row["user_id"]).order_by("created_at", "id")
-        keep = qs.first()
+        qs = list(TeamMemberApplication.objects.filter(event_id=row["event_id"], user_id=row["user_id"]))
+        qs.sort(key=lambda app: (-status_priority.get(app.status, 0), app.created_at, app.id))
+        keep = qs[0] if qs else None
         if keep is None:
             continue
-        for other in qs.exclude(pk=keep.pk):
-            for ans in TeamApplicationAnswer.objects.filter(application_id=other.pk):
+        for other in qs[1:]:
+            for ans in TeamApplicationAnswer.objects.filter(application_id=other.id):
                 TeamApplicationAnswer.objects.update_or_create(
-                    application_id=keep.pk,
+                    application_id=keep.id,
                     question_id=ans.question_id,
                     defaults={"answer": ans.answer},
                 )
