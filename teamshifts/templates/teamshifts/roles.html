@@ -24,7 +24,8 @@
                     <tr>
                         <th>{% trans "Role name" %}</th>
                         <th>{% trans "Description" %}</th>
-                        <th class='action-col-1'></th>
+                        <th>{% trans "Applications" %}</th>
+                        <th class='action-col-2'></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -33,6 +34,10 @@
                             <td><strong>{{ role.name }}</strong></td>
                             <td class='text-muted'>{{ role.description|default:"—" }}</td>
                             <td class='text-right flip'>
+                                <a href='{% url "plugins:teamshifts:role_edit" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
+                                   class='btn btn-default btn-sm'>
+                                    <span class='fa fa-edit'></span>
+                                </a>
                                 <form action='{% url "plugins:teamshifts:role_delete" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
                                       method='post'
                                       class='helper-display-inline'>
