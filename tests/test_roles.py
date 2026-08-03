@@ -25,7 +25,7 @@ def test_teamrole_form_validates_is_restricted(event):
 @pytest.mark.django_db
 def test_teamrole_form_validates_open_role(event):
     with scope(event=event):
-        form = TeamRoleForm(data={"name": "Helper", "is_restricted": False})
+        form = TeamRoleForm(data={"name": "Helper"})
         form.instance.event = event
         assert form.is_valid()
         role = form.save()
