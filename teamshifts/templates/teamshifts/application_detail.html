@@ -1,5 +1,11 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
+{% load static %}
+
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/applications.js' %}"></script>
+{% endblock %}
 
 {% block title %}{% trans "Application Details" %} :: {{ request.event.name }}{% endblock %}
 
@@ -29,7 +35,7 @@
             <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}?next={{ request.path|urlencode }}"
                   method="post" class="teamshifts-inline-form" id="detail-status-form">
                 {% csrf_token %}
-                <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ application.status }}'; }">
+                <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" data-current-status="{{ application.status }}" data-email-statuses="accepted,rejected">
                     {% for value, label in status_choices %}
                         <option value="{{ value }}" {% if value == application.status %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}

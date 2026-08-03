@@ -96,6 +96,16 @@ label .optional {
     padding-right: 0;
 }
 
+.teamshifts-filter-bar {
+    margin-bottom: 1em;
+    overflow: hidden;
+}
+
+.teamshifts-select-all-col {
+    width: 40px;
+    padding-right: 0;
+}
+
 .teamshifts-detail-header-container {
     margin-bottom: 20px;
 }

@@ -1,5 +1,11 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
+{% load static %}
+
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/applications.js' %}"></script>
+{% endblock %}
 
 {% block title %}{% trans "Team Applications" %} :: {{ request.event.name }}{% endblock %}
 
@@ -13,7 +19,7 @@
         </div>
     </nav>
 
-    <div style="margin-bottom: 1em; overflow: hidden;">
+    <div class="teamshifts-filter-bar">
         <form method="get" class="form-inline pull-left">
         <div class="form-group">
             <input type="text" name="q" value="{{ search|default:'' }}" class="form-control" placeholder="{% trans 'Search by name or email' %}">
@@ -49,7 +55,7 @@
             <table class="table table-hover table-quotas">
                 <thead>
                     <tr>
-                        <th style="width: 40px; padding-right: 0;">
+                        <th class="teamshifts-select-all-col">
                             <input type="checkbox" id="select-all" title="{% trans 'Select all' %}" aria-label="{% trans 'Select all' %}">
                         </th>
                         {% for col in columns %}
@@ -73,7 +79,7 @@
                                 <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}"
                                       method="post" id="status-form-{{ app.pk }}" class="teamshifts-inline-form">
                                     {% csrf_token %}
-                                    <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if app.status == 'pending' %}label-warning{% elif app.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" onchange="if(confirm('{% trans "Are you sure you want to change the status? This may send an email to the applicant." %}')) { this.form.submit(); } else { this.value = '{{ app.status }}'; }">
+                                    <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if app.status == 'pending' %}label-warning{% elif app.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" data-current-status="{{ app.status }}" data-email-statuses="accepted,rejected">
                                         {% for value, label in status_choices %}
                                             <option value="{{ value }}" {% if value == app.status %}selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
@@ -92,20 +98,6 @@
             </table>
         </div>
         {% include "pretixcontrol/pagination.html" %}
-
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {
-                var selectAll = document.getElementById("select-all");
-                if (selectAll) {
-                    selectAll.addEventListener("change", function() {
-                        var checkboxes = document.querySelectorAll(".app-checkbox:not([disabled])");
-                        for (var i = 0; i < checkboxes.length; i++) {
-                            checkboxes[i].checked = this.checked;
-                        }
-                    });
-                }
-            });
-        </script>
     {% else %}
         <div class="empty-collection">
             <p>{% trans "No applications yet." %}</p>
