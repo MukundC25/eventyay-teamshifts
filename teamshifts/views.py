@@ -4,7 +4,7 @@ from datetime import timedelta
 import dateutil.parser
 from django.conf import settings as django_settings
 from django.contrib import messages
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse

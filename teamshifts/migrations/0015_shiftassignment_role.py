@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0014_merge_20260729_0958"),
+        ("teamshifts", "0014_teamrole_is_restricted"),
     ]
 
     operations = [
