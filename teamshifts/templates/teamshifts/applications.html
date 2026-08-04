@@ -1,5 +1,11 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
+{% load static %}
+
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/applications.js' %}"></script>
+{% endblock %}
 
 {% block title %}{% trans "Team Applications" %} :: {{ request.event.name }}{% endblock %}
 
@@ -13,7 +19,7 @@
         </div>
     </nav>
 
-    <div style="margin-bottom: 1em; overflow: hidden;">
+    <div class="teamshifts-filter-bar">
         <form method="get" class="form-inline pull-left">
         <div class="form-group">
             <input type="text" name="q" value="{{ search|default:'' }}" class="form-control" placeholder="{% trans 'Search by name or email' %}">
@@ -49,7 +55,7 @@
             <table class="table table-hover table-quotas">
                 <thead>
                     <tr>
-                        <th style="width: 40px; padding-right: 0;">
+                        <th class="teamshifts-select-all-col">
                             <input type="checkbox" id="select-all" title="{% trans 'Select all' %}" aria-label="{% trans 'Select all' %}">
                         </th>
                         {% for col in columns %}
@@ -57,44 +63,34 @@
                         {% endfor %}
                         <th>{% trans "Status" %}</th>
                         <th>{% trans "Applied" %}</th>
-                        <th class="action-col-2"></th>
+                        <th class="action-col-1"></th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for app in applications %}
                         <tr>
-                            <td style="padding-right: 0;">
+                            <td class="teamshifts-checkbox-cell">
                                 <input type="checkbox" name="application_ids" value="{{ app.pk }}" form="bulk-action-form" class="app-checkbox" {% if app.status != 'pending' %}disabled{% endif %}>
                             </td>
                             {% for val in app.dynamic_values %}
                                 <td>{{ val|default:"—" }}</td>
                             {% endfor %}
-                            <td>
-                                {% if app.status == 'pending' %}
-                                    <span class="label label-warning">{% trans "Pending" %}</span>
-                                {% elif app.status == 'accepted' %}
-                                    <span class="label label-success">{% trans "Accepted" %}</span>
-                                {% else %}
-                                    <span class="label label-danger">{% trans "Rejected" %}</span>
-                                {% endif %}
+                            <td class="text-nowrap">
+                                <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}"
+                                      method="post" id="status-form-{{ app.pk }}" class="teamshifts-inline-form">
+                                    {% csrf_token %}
+                                    <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if app.status == 'pending' %}label-warning{% elif app.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" data-current-status="{{ app.status }}" data-email-statuses="accepted,rejected">
+                                        {% for value, label in status_choices %}
+                                            <option value="{{ value }}" {% if value == app.status %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
                             </td>
                             <td>{{ app.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
                             <td class="text-right flip">
                                 <a href="{% url 'plugins:teamshifts:application_detail' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}" class="btn btn-default btn-sm" title="{% trans 'View details' %}" aria-label="{% trans 'View details' %}">
                                     <span class="fa fa-eye" aria-hidden="true"></span>
                                 </a>
-                                {% if app.status == 'pending' %}
-                                    <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}"
-                                          method="post" class="helper-display-inline">
-                                        {% csrf_token %}
-                                        <button type="submit" name="action" value="accept" class="btn btn-success btn-sm" title="{% trans 'Accept' %}" aria-label="{% trans 'Accept' %}">
-                                            <span class="fa fa-check" aria-hidden="true"></span>
-                                        </button>
-                                        <button type="submit" name="action" value="reject" class="btn btn-danger btn-sm" title="{% trans 'Reject' %}" aria-label="{% trans 'Reject' %}">
-                                            <span class="fa fa-times" aria-hidden="true"></span>
-                                        </button>
-                                    </form>
-                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}
@@ -102,20 +98,6 @@
             </table>
         </div>
         {% include "pretixcontrol/pagination.html" %}
-
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {
-                var selectAll = document.getElementById("select-all");
-                if (selectAll) {
-                    selectAll.addEventListener("change", function() {
-                        var checkboxes = document.querySelectorAll(".app-checkbox:not([disabled])");
-                        for (var i = 0; i < checkboxes.length; i++) {
-                            checkboxes[i].checked = this.checked;
-                        }
-                    });
-                }
-            });
-        </script>
     {% else %}
         <div class="empty-collection">
             <p>{% trans "No applications yet." %}</p>

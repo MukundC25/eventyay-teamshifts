@@ -6,10 +6,11 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, Sum
 from django.forms import inlineformset_factory
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.formats import date_format
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _, ngettext
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
@@ -597,19 +598,26 @@ class ApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
                 pk=kwargs["pk"],
                 event=event,
             )
-            action = request.POST.get("action")
-            if action == "accept":
-                application.status = ApplicationStatus.ACCEPTED
+            new_status = request.POST.get("status")
+            if new_status not in ApplicationStatus.values:
+                return HttpResponseBadRequest("Invalid status")
+            old_status = application.status
+            if new_status != old_status:
+                application.status = new_status
                 application.save(update_fields=["status", "updated_at"])
-                messages.success(request, _("Application by %s accepted.") % application.user.email)
-                transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
-            elif action == "reject":
-                application.status = ApplicationStatus.REJECTED
-                application.save(update_fields=["status", "updated_at"])
-                messages.warning(request, _("Application by %s rejected.") % application.user.email)
-                transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_REJECTED))
-            else:
-                raise Http404
+                if new_status == ApplicationStatus.ACCEPTED:
+                    messages.success(request, _("Application by %s accepted.") % application.user.email)
+                    transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
+                elif new_status == ApplicationStatus.REJECTED:
+                    messages.warning(request, _("Application by %s rejected.") % application.user.email)
+                    transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_REJECTED))
+                else:
+                    messages.success(request, _("Application status updated to %s.") % application.get_status_display())
+
+            next_url = request.GET.get("next") or request.POST.get("next")
+            if next_url and url_has_allowed_host_and_scheme(url=next_url, allowed_hosts={request.get_host()}):
+                return redirect(next_url)
+
         return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
 
 
@@ -621,7 +629,7 @@ class BulkApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin,
         with scope(event=event):
             action = request.POST.get("action")
             if action not in ("accept", "reject"):
-                raise Http404
+                return HttpResponseBadRequest("Invalid action")
 
             app_ids = request.POST.getlist("application_ids")
             if not app_ids:
@@ -678,6 +686,7 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
             )
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
+            ctx["status_choices"] = ApplicationStatus.choices
         return ctx
 
 

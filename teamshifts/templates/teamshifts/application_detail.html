@@ -1,5 +1,11 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
+{% load static %}
+
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/applications.js' %}"></script>
+{% endblock %}
 
 {% block title %}{% trans "Application Details" %} :: {{ request.event.name }}{% endblock %}
 
@@ -12,7 +18,7 @@
         </div>
     </nav>
     
-    <div style="margin-bottom: 20px;">
+    <div class="teamshifts-detail-header-container">
         {% if application.status == 'accepted' %}
             <a href="{% url 'plugins:teamshifts:members' organizer=request.organizer.slug event=request.event.slug %}" class="btn btn-default">
                 <span class="fa fa-arrow-left"></span> {% trans "Back to members list" %}
@@ -22,19 +28,20 @@
                 <span class="fa fa-arrow-left"></span> {% trans "Back to applications list" %}
             </a>
         {% endif %}
-        
-        {% if application.status == 'pending' %}
-        <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}"
-              method="post" class="helper-display-inline" style="float: right;">
-            {% csrf_token %}
-            <button type="submit" name="action" value="accept" class="btn btn-success">
-                <span class="fa fa-check"></span> {% trans "Accept" %}
-            </button>
-            <button type="submit" name="action" value="reject" class="btn btn-danger">
-                <span class="fa fa-times"></span> {% trans "Reject" %}
-            </button>
-        </form>
-        {% endif %}
+        <div class="teamshifts-detail-title-container">
+            <h2 class="teamshifts-detail-title">
+                {% trans "Application:" %} {{ application.user.get_full_name }}
+            </h2>
+            <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}?next={{ request.path|urlencode }}"
+                  method="post" class="teamshifts-inline-form" id="detail-status-form">
+                {% csrf_token %}
+                <select name="status" aria-label="{% trans 'Change application status' %}" class="form-control teamshifts-status-dropdown {% if application.status == 'pending' %}label-warning{% elif application.status == 'accepted' %}label-success{% else %}label-danger{% endif %}" data-current-status="{{ application.status }}" data-email-statuses="accepted,rejected">
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if value == application.status %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
     </div>
 
     <div class="panel panel-default">

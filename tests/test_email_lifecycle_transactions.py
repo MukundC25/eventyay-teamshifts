@@ -99,7 +99,7 @@ def test_application_status_view_queues_accepted_email(mock_queue, client, event
     )
     tc = TestCase()
     with tc.captureOnCommitCallbacks(execute=True):
-        response = client.post(url, {"action": "accept"})
+        response = client.post(url, {"status": ApplicationStatus.ACCEPTED})
 
     expected_url = reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     assert response.status_code == 302
@@ -123,7 +123,7 @@ def test_application_status_view_queues_rejected_email(mock_queue, client, event
     )
     tc = TestCase()
     with tc.captureOnCommitCallbacks(execute=True):
-        response = client.post(url, {"action": "reject"})
+        response = client.post(url, {"status": ApplicationStatus.REJECTED})
 
     expected_url = reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     assert response.status_code == 302
@@ -133,3 +133,49 @@ def test_application_status_view_queues_rejected_email(mock_queue, client, event
         pending_application.refresh_from_db()
         assert pending_application.status == ApplicationStatus.REJECTED
         mock_queue.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("teamshifts.views.queue_lifecycle_email")
+def test_application_status_view_no_op_on_same_status(mock_queue, client, event, team_role, pending_application, orga_user, settings):
+    settings.SITE_URL = "https://testserver"
+    client.force_login(orga_user)
+
+    url = reverse(
+        "plugins:teamshifts:application_status",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": pending_application.pk},
+    )
+    tc = TestCase()
+    with tc.captureOnCommitCallbacks(execute=True):
+        response = client.post(url, {"status": ApplicationStatus.PENDING})
+
+    assert response.status_code == 302
+    with scope(event=event):
+        pending_application.refresh_from_db()
+        assert pending_application.status == ApplicationStatus.PENDING
+        mock_queue.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("teamshifts.views.queue_lifecycle_email")
+def test_application_status_view_no_email_for_pending_reset(mock_queue, client, event, team_role, pending_application, orga_user, settings):
+    settings.SITE_URL = "https://testserver"
+    client.force_login(orga_user)
+
+    with scope(event=event):
+        pending_application.status = ApplicationStatus.ACCEPTED
+        pending_application.save()
+
+    url = reverse(
+        "plugins:teamshifts:application_status",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": pending_application.pk},
+    )
+    tc = TestCase()
+    with tc.captureOnCommitCallbacks(execute=True):
+        response = client.post(url, {"status": ApplicationStatus.PENDING})
+
+    assert response.status_code == 302
+    with scope(event=event):
+        pending_application.refresh_from_db()
+        assert pending_application.status == ApplicationStatus.PENDING
+        mock_queue.assert_not_called()
