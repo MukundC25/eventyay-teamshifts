@@ -1394,7 +1394,7 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
 
         roles = event.team_roles.all()
         for role in roles:
-            data["roles"].append({"id": role.id, "name": {"en": role.name}})
+            data["roles"].append({"id": role.id, "name": {"en": role.name}, "is_restricted": role.is_restricted})
 
         locations = event.shift_locations.all()
         for loc in locations:
@@ -1407,7 +1407,13 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
                 for assignment in shift.assignments.filter(team_member__isnull=False, role_id=role_assignment.role.id):
                     assignments.append({"id": assignment.team_member.id, "name": assignment.team_member.get_full_name() or assignment.team_member.email})
                 roles_data.append(
-                    {"id": role_assignment.role.id, "name": {"en": role_assignment.role.name}, "capacity": role_assignment.capacity, "assigned": assignments}
+                    {
+                        "id": role_assignment.role.id,
+                        "name": {"en": role_assignment.role.name},
+                        "capacity": role_assignment.capacity,
+                        "assigned": assignments,
+                        "is_restricted": role_assignment.role.is_restricted,
+                    }
                 )
             data["talks"].append(
                 {
