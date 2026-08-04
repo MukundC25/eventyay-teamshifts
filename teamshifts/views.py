@@ -10,11 +10,12 @@ from django.forms import inlineformset_factory
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.utils.translation import get_language, get_language_info, gettext_lazy as _, ngettext
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
 from django_scopes import scope
 from eventyay.base.i18n import LazyI18nString
@@ -1372,9 +1373,6 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
-from django.http import JsonResponse
-
-
 class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
@@ -1428,15 +1426,7 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             )
         return JsonResponse(data)
 
-    @csrf_exempt
-    def dispatch(self, request, *args, **kwargs):
-        return super().dispatch(request, *args, **kwargs)
-
     def post(self, request, *args, **kwargs):
-        import json
-
-        import dateutil.parser
-
         data = json.loads(request.body.decode())
         event = request.event
         with scope(event=event):
@@ -1466,21 +1456,10 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"id": shift.id})
 
 
-from django.utils.decorators import method_decorator
-
-
 class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
-    @csrf_exempt
-    def dispatch(self, request, *args, **kwargs):
-        return super().dispatch(request, *args, **kwargs)
-
     def patch(self, request, *args, **kwargs):
-        import json
-
-        import dateutil.parser
-
         event = request.event
         with scope(event=event):
             shift = get_object_or_404(Shift, pk=kwargs["pk"], event=event)
@@ -1541,13 +1520,7 @@ class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
 class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
-    @csrf_exempt
-    def dispatch(self, request, *args, **kwargs):
-        return super().dispatch(request, *args, **kwargs)
-
     def post(self, request, *args, **kwargs):
-        import json
-
         event = request.event
         with scope(event=event):
             data = json.loads(request.body.decode())
@@ -1589,6 +1562,7 @@ class ShiftScheduleWarningsAPIView(EventPermissionRequiredMixin, View):
         return JsonResponse({})
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
     permission = "can_change_event_settings"
     template_name = "teamshifts/schedule_grid.html"

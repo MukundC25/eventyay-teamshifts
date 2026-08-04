@@ -1,5 +1,4 @@
 from django.urls import path
-from django.views.decorators.csrf import csrf_exempt
 from eventyay.common.urls import OrganizerSlugConverter  # noqa: F401
 
 from . import views
@@ -175,32 +174,32 @@ urlpatterns = [
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/shifts/",
-        csrf_exempt(views.ShiftScheduleTalksAPIView.as_view()),
+        views.ShiftScheduleTalksAPIView.as_view(),
         name="api_shifts",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/shifts/<int:pk>/",
-        csrf_exempt(views.ShiftScheduleTalkAPIView.as_view()),
+        views.ShiftScheduleTalkAPIView.as_view(),
         name="api_shift_detail",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/members/",
-        csrf_exempt(views.ShiftScheduleMembersAPIView.as_view()),
+        views.ShiftScheduleMembersAPIView.as_view(),
         name="api_members",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/assignments/",
-        csrf_exempt(views.ShiftScheduleAssignmentsAPIView.as_view()),
+        views.ShiftScheduleAssignmentsAPIView.as_view(),
         name="api_assignments",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/availabilities/",
-        csrf_exempt(views.ShiftScheduleAvailabilitiesAPIView.as_view()),
+        views.ShiftScheduleAvailabilitiesAPIView.as_view(),
         name="api_availabilities",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/warnings/",
-        csrf_exempt(views.ShiftScheduleWarningsAPIView.as_view()),
+        views.ShiftScheduleWarningsAPIView.as_view(),
         name="api_warnings",
     ),
     path(
