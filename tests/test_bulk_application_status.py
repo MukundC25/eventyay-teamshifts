@@ -58,8 +58,17 @@ def pending_applications(event, team_role, django_user_model):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("action", "expected_status"),
+    [
+        ("accept", ApplicationStatus.ACCEPTED),
+        ("reject", ApplicationStatus.REJECTED),
+    ],
+)
 @patch("teamshifts.views.queue_lifecycle_email")
-def test_bulk_accept_updates_all_selected_pending_applications(mock_queue, client, event, team_role, pending_applications, orga_user, settings):
+def test_bulk_action_updates_all_selected_pending_applications(
+    mock_queue, action, expected_status, client, event, team_role, pending_applications, orga_user, settings
+):
     settings.SITE_URL = "https://testserver"
     client.force_login(orga_user)
 
@@ -68,7 +77,7 @@ def test_bulk_accept_updates_all_selected_pending_applications(mock_queue, clien
 
     tc = TestCase()
     with tc.captureOnCommitCallbacks(execute=True):
-        response = client.post(url, {"action": "accept", "application_ids": app_ids})
+        response = client.post(url, {"action": action, "application_ids": app_ids})
 
     expected_url = reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     assert response.status_code == 302
@@ -77,27 +86,7 @@ def test_bulk_accept_updates_all_selected_pending_applications(mock_queue, clien
     with scope(event=event):
         for app in pending_applications:
             app.refresh_from_db()
-            assert app.status == ApplicationStatus.ACCEPTED
-    assert mock_queue.call_count == len(pending_applications)
-
-
-@pytest.mark.django_db
-@patch("teamshifts.views.queue_lifecycle_email")
-def test_bulk_reject_updates_all_selected_pending_applications(mock_queue, client, event, team_role, pending_applications, orga_user, settings):
-    settings.SITE_URL = "https://testserver"
-    client.force_login(orga_user)
-
-    url = reverse("plugins:teamshifts:application_bulk_action", kwargs={"organizer": event.organizer.slug, "event": event.slug})
-    app_ids = [str(a.pk) for a in pending_applications]
-
-    tc = TestCase()
-    with tc.captureOnCommitCallbacks(execute=True):
-        client.post(url, {"action": "reject", "application_ids": app_ids})
-
-    with scope(event=event):
-        for app in pending_applications:
-            app.refresh_from_db()
-            assert app.status == ApplicationStatus.REJECTED
+            assert app.status == expected_status
     assert mock_queue.call_count == len(pending_applications)
 
 
@@ -145,27 +134,22 @@ def test_bulk_action_skips_applications_already_in_target_status(mock_queue, cli
     with tc.captureOnCommitCallbacks(execute=True):
         client.post(url, {"action": "accept", "application_ids": app_ids})
 
+    # Only the two applications that were not already accepted should trigger a new email.
     assert mock_queue.call_count == len(pending_applications) - 1
 
 
 @pytest.mark.django_db
-def test_bulk_action_requires_selection(client, event, team_role, orga_user, settings):
-    settings.SITE_URL = "https://testserver"
-    client.force_login(orga_user)
-
-    url = reverse("plugins:teamshifts:application_bulk_action", kwargs={"organizer": event.organizer.slug, "event": event.slug})
-    response = client.post(url, {"action": "accept"})
-
-    assert response.status_code == 302
-
-
-@pytest.mark.django_db
-def test_bulk_action_rejects_invalid_action(client, event, team_role, pending_applications, orga_user, settings):
+def test_bulk_action_rejects_invalid_input(client, event, team_role, pending_applications, orga_user, settings):
     settings.SITE_URL = "https://testserver"
     client.force_login(orga_user)
 
     url = reverse("plugins:teamshifts:application_bulk_action", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     app_ids = [str(a.pk) for a in pending_applications]
-    response = client.post(url, {"action": "delete", "application_ids": app_ids})
 
+    # No applications selected: warns and redirects instead of erroring.
+    response = client.post(url, {"action": "accept"})
+    assert response.status_code == 302
+
+    # Unsupported action value: rejected outright.
+    response = client.post(url, {"action": "delete", "application_ids": app_ids})
     assert response.status_code == 400
