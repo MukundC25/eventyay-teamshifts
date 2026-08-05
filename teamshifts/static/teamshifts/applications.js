@@ -41,8 +41,42 @@ function setupSelectAll() {
     }
 
     selectAll.addEventListener("change", () => {
-        document.querySelectorAll(".app-checkbox:not([disabled])").forEach((checkbox) => {
+        document.querySelectorAll(".app-checkbox").forEach((checkbox) => {
             checkbox.checked = selectAll.checked;
+        });
+    });
+}
+
+function getBulkActionConfirmMessage(action) {
+    if (action === "accept") {
+        return gettext("Are you sure you want to accept the selected applications? This may send emails to the applicants.");
+    }
+    return gettext("Are you sure you want to reject the selected applications? This may send emails to the applicants.");
+}
+
+function setupBulkActions() {
+    const form = document.getElementById("bulk-action-form");
+    const actionInput = document.getElementById("bulk-action-input");
+
+    document.querySelectorAll(".teamshifts-bulk-action-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+            const action = button.dataset.action;
+            const selectedCount = document.querySelectorAll(".app-checkbox:checked").length;
+
+            if (selectedCount === 0) {
+                window.alert(gettext("Please select at least one application."));
+                return;
+            }
+
+            window
+                .showConfirmDialog({ message: getBulkActionConfirmMessage(action) })
+                .then((confirmed) => {
+                    if (!confirmed) {
+                        return;
+                    }
+                    actionInput.value = action;
+                    form.requestSubmit();
+                });
         });
     });
 }
@@ -50,4 +84,5 @@ function setupSelectAll() {
 document.addEventListener("DOMContentLoaded", () => {
     setupStatusDropdowns();
     setupSelectAll();
+    setupBulkActions();
 });

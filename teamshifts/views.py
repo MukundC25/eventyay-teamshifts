@@ -636,24 +636,24 @@ class BulkApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin,
                 messages.warning(request, _("No applications selected."))
                 return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
 
+            new_status = ApplicationStatus.ACCEPTED if action == "accept" else ApplicationStatus.REJECTED
+
             apps = list(
                 TeamMemberApplication.objects.filter(
                     event=event,
                     pk__in=app_ids,
-                    status=ApplicationStatus.PENDING,
-                ).select_related("user")
+                )
+                .exclude(status=new_status)
+                .select_related("user")
             )
 
             if not apps:
-                messages.warning(request, _("None of the selected applications were in a pending state."))
+                messages.warning(request, _("The selected applications already have this status."))
                 return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
-
-            new_status = ApplicationStatus.ACCEPTED if action == "accept" else ApplicationStatus.REJECTED
 
             TeamMemberApplication.objects.filter(
                 event=event,
                 pk__in=[a.pk for a in apps],
-                status=ApplicationStatus.PENDING,
             ).update(status=new_status, updated_at=now())
 
             for app in apps:
