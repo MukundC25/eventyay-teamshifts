@@ -55,27 +55,22 @@ function getBulkActionConfirmMessage(action) {
 }
 
 function setupBulkActions() {
-    const form = document.getElementById("bulk-action-form");
-    const actionInput = document.getElementById("bulk-action-input");
-
     document.querySelectorAll(".teamshifts-bulk-action-btn").forEach((button) => {
-        button.addEventListener("click", () => {
-            const action = button.dataset.action;
-            const selectedCount = document.querySelectorAll(".app-checkbox:checked").length;
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
 
+            const selectedCount = document.querySelectorAll(".app-checkbox:checked").length;
             if (selectedCount === 0) {
                 window.alert(gettext("Please select at least one application."));
                 return;
             }
 
             window
-                .showConfirmDialog({ message: getBulkActionConfirmMessage(action) })
+                .showConfirmDialog({ message: getBulkActionConfirmMessage(button.value) })
                 .then((confirmed) => {
-                    if (!confirmed) {
-                        return;
+                    if (confirmed) {
+                        button.form.requestSubmit(button);
                     }
-                    actionInput.value = action;
-                    form.requestSubmit();
                 });
         });
     });
