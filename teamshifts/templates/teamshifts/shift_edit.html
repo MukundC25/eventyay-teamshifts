@@ -96,20 +96,5 @@
             </a>
         </div>
     </form>
-    
-    <div id="empty-role-form" style="display: none;">
-        <tr class="role-form-row">
-            <td>
-                {{ formset.empty_form.role }}
-            </td>
-            <td>
-                {{ formset.empty_form.capacity }}
-            </td>
-            <td>
-                <button type="button" class="btn btn-danger btn-sm remove-role-btn"><i class="fa fa-trash"></i></button>
-                <span class="delete-checkbox hidden">{{ formset.empty_form.DELETE }}</span>
-            </td>
-        </tr>
-    </div>
 
 {% endblock %}

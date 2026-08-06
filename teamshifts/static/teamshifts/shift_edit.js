@@ -21,32 +21,37 @@ function setupDynamicFormset() {
     const addRoleBtn = document.getElementById("add-role-btn");
     const rolesBody = document.getElementById("roles-body");
     const totalFormsInput = document.getElementById("id_roles-TOTAL_FORMS");
-    const emptyFormContainer = document.getElementById("empty-role-form");
 
-    if (!addRoleBtn || !rolesBody || !totalFormsInput || !emptyFormContainer) {
-        return;
-    }
-
-    const emptyRowTemplate = emptyFormContainer.querySelector("tr");
-    if (!emptyRowTemplate) {
+    if (!addRoleBtn || !rolesBody || !totalFormsInput) {
         return;
     }
 
     addRoleBtn.addEventListener("click", () => {
         const formCount = parseInt(totalFormsInput.value, 10);
+        const rows = rolesBody.querySelectorAll(".role-form-row");
+        if (rows.length === 0) {
+            return;
+        }
 
-        const newRow = emptyRowTemplate.cloneNode(true);
-        newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, String(formCount));
+        const lastRow = rows[rows.length - 1];
+        const newRow = lastRow.cloneNode(true);
+
+        const regex = /roles-(\d+)-/g;
+        newRow.innerHTML = newRow.innerHTML.replace(regex, `roles-${formCount}-`);
 
         newRow.querySelectorAll("input, select").forEach((input) => {
             if (input.type === "checkbox") {
                 input.checked = false;
             } else if (input.tagName === "SELECT") {
                 input.selectedIndex = 0;
-            } else if (!input.name.endsWith("-id")) {
+            } else if (input.type !== "hidden" || input.name.endsWith("-id")) {
                 input.value = input.name.endsWith("-capacity") ? "1" : "";
             }
         });
+
+        newRow.querySelectorAll(".help-block").forEach((err) => err.remove());
+        newRow.querySelectorAll(".has-error").forEach((cell) => cell.classList.remove("has-error"));
+        newRow.style.display = "";
 
         rolesBody.appendChild(newRow);
         totalFormsInput.value = formCount + 1;

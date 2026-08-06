@@ -41,7 +41,7 @@
       </a>
     </div>
     <div class='widget-container widget-small'>
-      <a href='#' class='widget'>
+      <a href='{% url "plugins:teamshifts:shifts" organizer=request.organizer.slug event=request.event.slug %}' class='widget'>
         <div class='numwidget'>
           <span class='num'>{{ shift_count }}</span>
           <span class='text'>{% trans "Total Shifts" %}</span>
