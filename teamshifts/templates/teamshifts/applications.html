@@ -37,10 +37,10 @@
     
     {% if applications %}
         <div class="pull-right">
-            <button type="submit" form="bulk-action-form" name="action" value="accept" class="btn btn-success">
+            <button type="submit" form="bulk-action-form" name="action" value="accept" class="btn btn-success teamshifts-bulk-action-btn">
                 <span class="fa fa-check"></span> {% trans "Bulk Accept" %}
             </button>
-            <button type="submit" form="bulk-action-form" name="action" value="reject" class="btn btn-danger">
+            <button type="submit" form="bulk-action-form" name="action" value="reject" class="btn btn-danger teamshifts-bulk-action-btn">
                 <span class="fa fa-times"></span> {% trans "Bulk Reject" %}
             </button>
         </div>
@@ -70,7 +70,7 @@
                     {% for app in applications %}
                         <tr>
                             <td class="teamshifts-checkbox-cell">
-                                <input type="checkbox" name="application_ids" value="{{ app.pk }}" form="bulk-action-form" class="app-checkbox" {% if app.status != 'pending' %}disabled{% endif %}>
+                                <input type="checkbox" name="application_ids" value="{{ app.pk }}" form="bulk-action-form" class="app-checkbox" aria-label="{% trans 'Select application' %}">
                             </td>
                             {% for val in app.dynamic_values %}
                                 <td>{{ val|default:"—" }}</td>

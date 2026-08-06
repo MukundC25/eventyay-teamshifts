@@ -41,8 +41,37 @@ function setupSelectAll() {
     }
 
     selectAll.addEventListener("change", () => {
-        document.querySelectorAll(".app-checkbox:not([disabled])").forEach((checkbox) => {
+        document.querySelectorAll(".app-checkbox").forEach((checkbox) => {
             checkbox.checked = selectAll.checked;
+        });
+    });
+}
+
+function getBulkActionConfirmMessage(action) {
+    if (action === "accept") {
+        return gettext("Are you sure you want to accept the selected applications? This may send emails to the applicants.");
+    }
+    return gettext("Are you sure you want to reject the selected applications? This may send emails to the applicants.");
+}
+
+function setupBulkActions() {
+    document.querySelectorAll(".teamshifts-bulk-action-btn").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+
+            const selectedCount = document.querySelectorAll(".app-checkbox:checked").length;
+            if (selectedCount === 0) {
+                window.alert(gettext("Please select at least one application."));
+                return;
+            }
+
+            window
+                .showConfirmDialog({ message: getBulkActionConfirmMessage(button.value) })
+                .then((confirmed) => {
+                    if (confirmed) {
+                        button.form.requestSubmit(button);
+                    }
+                });
         });
     });
 }
@@ -50,4 +79,5 @@ function setupSelectAll() {
 document.addEventListener("DOMContentLoaded", () => {
     setupStatusDropdowns();
     setupSelectAll();
+    setupBulkActions();
 });
