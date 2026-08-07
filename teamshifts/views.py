@@ -1373,71 +1373,89 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
-class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def get(self, request, *args, **kwargs):
         event = request.event
-        data = {
-            "version": None,
-            "event_start": event.date_from.isoformat() if event.date_from else "",
-            "event_end": event.date_to.isoformat() if event.date_to else "",
-            "timezone": event.timezone,
-            "locales": ["en"],
-            "rooms": [],
-            "tracks": [],
-            "speakers": [],
-            "talks": [],
-            "warnings": {},
-            "roles": [],
-        }
+        with scope(event=event):
+            data = {
+                "version": None,
+                "event_start": event.date_from.isoformat() if event.date_from else "",
+                "event_end": event.date_to.isoformat() if event.date_to else "",
+                "timezone": event.timezone,
+                "locales": ["en"],
+                "rooms": [],
+                "tracks": [],
+                "speakers": [],
+                "talks": [],
+                "warnings": {},
+                "roles": [],
+            }
 
-        roles = event.team_roles.all()
-        for role in roles:
-            data["roles"].append({"id": role.id, "name": {"en": role.name}, "is_restricted": role.is_restricted})
+            roles = event.team_roles.all()
+            for role in roles:
+                data["roles"].append({"id": role.id, "name": {"en": role.name}, "is_restricted": role.is_restricted})
 
-        locations = event.shift_locations.all()
-        for loc in locations:
-            data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": loc.description or ""}})
-        shifts = event.shifts.all().prefetch_related("role_assignments", "role_assignments__role")
-        for shift in shifts:
-            roles_data = []
-            for role_assignment in shift.role_assignments.all():
-                assignments = []
-                for assignment in shift.assignments.filter(team_member__isnull=False, role_id=role_assignment.role.id):
-                    assignments.append({"id": assignment.team_member.id, "name": assignment.team_member.get_full_name() or assignment.team_member.email})
-                roles_data.append(
+            locations = event.shift_locations.all()
+            for loc in locations:
+                data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": loc.description or ""}})
+
+            shifts = event.shifts.all().prefetch_related(
+                "role_assignments__role",
+                "assignments__team_member",
+                "assignments__role",
+            )
+            for shift in shifts:
+                roles_data = []
+                for role_assignment in shift.role_assignments.all():
+                    assignments = []
+                    for assignment in shift.assignments.all():
+                        if assignment.team_member_id and assignment.role_id == role_assignment.role_id:
+                            name = assignment.team_member.get_full_name() or assignment.team_member.email
+                            assignments.append({"id": assignment.team_member.id, "name": name})
+                    roles_data.append(
+                        {
+                            "id": role_assignment.role.id,
+                            "name": {"en": role_assignment.role.name},
+                            "capacity": role_assignment.capacity,
+                            "assigned": assignments,
+                            "is_restricted": role_assignment.role.is_restricted,
+                        }
+                    )
+                data["talks"].append(
                     {
-                        "id": role_assignment.role.id,
-                        "name": {"en": role_assignment.role.name},
-                        "capacity": role_assignment.capacity,
-                        "assigned": assignments,
-                        "is_restricted": role_assignment.role.is_restricted,
+                        "id": shift.id,
+                        "code": str(shift.id),
+                        "title": {"en": shift.name or "Shift"},
+                        "abstract": "",
+                        "description": shift.description,
+                        "room": shift.location_id,
+                        "start": shift.start_time.isoformat() if shift.start_time else "",
+                        "end": shift.end_time.isoformat() if shift.end_time else "",
+                        "duration": int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0,
+                        "roles": roles_data,
+                        "state": "confirmed",
                     }
                 )
-            data["talks"].append(
-                {
-                    "id": shift.id,
-                    "code": str(shift.id),
-                    "title": {"en": shift.name or "Shift"},
-                    "abstract": "",
-                    "description": shift.description,
-                    "room": shift.location_id,
-                    "start": shift.start_time.isoformat() if shift.start_time else "",
-                    "end": shift.end_time.isoformat() if shift.end_time else "",
-                    "duration": int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0,
-                    "roles": roles_data,
-                    "state": "confirmed",
-                }
-            )
-        return JsonResponse(data)
+            return JsonResponse(data)
 
     def post(self, request, *args, **kwargs):
-        data = json.loads(request.body.decode())
+        try:
+            data = json.loads(request.body.decode())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return HttpResponseBadRequest("Invalid JSON body.")
         event = request.event
         with scope(event=event):
-            start = dateutil.parser.parse(data.get("start")) if data.get("start") else None
-            end = dateutil.parser.parse(data.get("end")) if data.get("end") else None
+            if not data.get("start") or not data.get("end"):
+                return HttpResponseBadRequest("Both 'start' and 'end' are required.")
+            try:
+                start = dateutil.parser.parse(data["start"])
+                end = dateutil.parser.parse(data["end"])
+            except (ValueError, OverflowError):
+                return HttpResponseBadRequest("Invalid date format.")
+            if end <= start:
+                return HttpResponseBadRequest("'end' must be after 'start'.")
             room_id = data.get("room")
             if isinstance(room_id, dict):
                 room_id = room_id.get("id")
@@ -1462,19 +1480,26 @@ class ShiftScheduleTalksAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"id": shift.id})
 
 
-class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def patch(self, request, *args, **kwargs):
+        try:
+            data = json.loads(request.body.decode())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return HttpResponseBadRequest("Invalid JSON body.")
         event = request.event
         with scope(event=event):
             shift = get_object_or_404(Shift, pk=kwargs["pk"], event=event)
-            data = json.loads(request.body.decode())
 
-            if "start" in data:
-                shift.start_time = dateutil.parser.parse(data["start"])
-            if "end" in data:
-                shift.end_time = dateutil.parser.parse(data["end"])
+            try:
+                if "start" in data:
+                    shift.start_time = dateutil.parser.parse(data["start"])
+                if "end" in data:
+                    shift.end_time = dateutil.parser.parse(data["end"])
+            except (TypeError, ValueError, OverflowError):
+                return HttpResponseBadRequest("Invalid date format for 'start'/'end'.")
+
             if "room" in data:
                 room_id = data["room"]
                 if isinstance(room_id, dict):
@@ -1484,6 +1509,9 @@ class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
                 shift.name = data["title"].get("en", shift.name)
             if "description" in data:
                 shift.description = data["description"]
+
+            if shift.start_time and shift.end_time and shift.end_time <= shift.start_time:
+                return HttpResponseBadRequest("'end' must be after 'start'.")
 
             shift.save()
 
@@ -1509,7 +1537,7 @@ class ShiftScheduleTalkAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleMembersAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def get(self, request, *args, **kwargs):
@@ -1523,21 +1551,34 @@ class ShiftScheduleMembersAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"members": members})
 
 
-class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def post(self, request, *args, **kwargs):
+        try:
+            data = json.loads(request.body.decode())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return HttpResponseBadRequest("Invalid JSON body.")
         event = request.event
         with scope(event=event):
-            data = json.loads(request.body.decode())
             shift_id = data.get("shift_id")
             user_id = data.get("user_id")
             role_id = data.get("role_id")
 
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
+
+            if not TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED, user_id=user_id).exists():
+                return HttpResponseBadRequest("User is not an accepted team member for this event.")
             user = get_object_or_404(User, pk=user_id)
 
-            ShiftAssignment.objects.get_or_create(shift=shift, team_member=user, role_id=role_id, defaults={"assigned_by": request.user})
+            if role_id and not shift.role_assignments.filter(role_id=role_id).exists():
+                return HttpResponseBadRequest("Role is not configured for this shift.")
+
+            ShiftAssignment.objects.update_or_create(
+                shift=shift,
+                team_member=user,
+                defaults={"role_id": role_id, "assigned_by": request.user},
+            )
             return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
@@ -1554,14 +1595,14 @@ class ShiftScheduleAssignmentsAPIView(EventPermissionRequiredMixin, View):
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleAvailabilitiesAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleAvailabilitiesAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def get(self, request, *args, **kwargs):
         return JsonResponse({"rooms": {}, "talks": {}})
 
 
-class ShiftScheduleWarningsAPIView(EventPermissionRequiredMixin, View):
+class ShiftScheduleWarningsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
     def get(self, request, *args, **kwargs):

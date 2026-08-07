@@ -67,7 +67,11 @@
                     <td>
                         {% if application.user.event_assignments %}
                             {% for assignment in application.user.event_assignments %}
-                                <span class="label label-default">{{ assignment.role.name }}</span>
+                                {% if assignment.role %}
+                                    {% ifchanged assignment.role.id %}
+                                        <span class="label label-default">{{ assignment.role.name }}</span>
+                                    {% endifchanged %}
+                                {% endif %}
                             {% endfor %}
                         {% elif application.role %}
                             <span class="label label-info">{{ application.role.name }}</span>
