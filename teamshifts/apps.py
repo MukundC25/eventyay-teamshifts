@@ -32,9 +32,7 @@ class TeamShiftsApp(PluginConfig):
         from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
         try:
-            schedule, _ = IntervalSchedule.objects.get_or_create(
-                every=60, period=IntervalSchedule.SECONDS
-            )
+            schedule, _ = IntervalSchedule.objects.get_or_create(every=60, period=IntervalSchedule.SECONDS)
             PeriodicTask.objects.update_or_create(
                 name="teamshifts-dispatch-scheduled-emails",
                 defaults={

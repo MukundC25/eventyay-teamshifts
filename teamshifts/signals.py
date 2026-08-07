@@ -105,6 +105,7 @@ def teamshifts_mail_placeholders(sender, **kwargs):
 def dispatch_scheduled_emails(sender, **kwargs):
     try:
         from .tasks import dispatch_scheduled_emails_task
+
         dispatch_scheduled_emails_task()
     except Exception:
         logger.exception("[TeamShifts] Failed in dispatch_scheduled_emails")
