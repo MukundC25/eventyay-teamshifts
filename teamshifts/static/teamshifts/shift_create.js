@@ -25,6 +25,14 @@ function setupModeToggle() {
     toggleRepeatOptions();
 }
 
+function showPreviewMessage(container, cssClass, text) {
+    const p = document.createElement("p");
+    p.className = cssClass;
+    p.textContent = text;
+    container.replaceChildren(p);
+    container.style.display = "block";
+}
+
 function setupPreviewOccurrences() {
     const previewBtn = document.getElementById("preview-occurrences-btn");
     const previewDiv = document.getElementById("occurrences-preview");
@@ -51,8 +59,7 @@ function setupPreviewOccurrences() {
         const lengthStr = lengthInput.value;
 
         if (!startStr || !endStr || !lengthStr) {
-            previewDiv.innerHTML = `<p class="text-danger">${gettext("Please fill in Start Time, End Time, and Shift Length.")}</p>`;
-            previewDiv.style.display = "block";
+            showPreviewMessage(previewDiv, "text-danger", gettext("Please fill in Start Time, End Time, and Shift Length."));
             return;
         }
 
@@ -61,22 +68,23 @@ function setupPreviewOccurrences() {
         const lengthMins = parseInt(lengthStr, 10);
 
         if (endDate <= startDate) {
-            previewDiv.innerHTML = `<p class="text-danger">${gettext("End Time must be after Start Time.")}</p>`;
-            previewDiv.style.display = "block";
+            showPreviewMessage(previewDiv, "text-danger", gettext("End Time must be after Start Time."));
             return;
         }
 
         if (lengthMins <= 0) {
-            previewDiv.innerHTML = `<p class="text-danger">${gettext("Shift Length must be greater than 0.")}</p>`;
-            previewDiv.style.display = "block";
+            showPreviewMessage(previewDiv, "text-danger", gettext("Shift Length must be greater than 0."));
             return;
         }
 
+        const fragment = document.createDocumentFragment();
+
         const durationMins = (endDate - startDate) / (1000 * 60);
         if (durationMins % lengthMins !== 0) {
-            previewDiv.innerHTML = `<p class="text-warning">${gettext("Warning: The shift length does not divide evenly into the total duration.")}</p>`;
-        } else {
-            previewDiv.innerHTML = "";
+            const warn = document.createElement("p");
+            warn.className = "text-warning";
+            warn.textContent = gettext("Warning: The shift length does not divide evenly into the total duration.");
+            fragment.appendChild(warn);
         }
 
         let curr = new Date(startDate);
@@ -94,10 +102,21 @@ function setupPreviewOccurrences() {
         }
 
         if (safetyCounter >= 100) {
-            previewDiv.innerHTML += `<p class="text-warning">${gettext("Too many occurrences (limited to 100 for preview).")}</p>`;
+            const warn = document.createElement("p");
+            warn.className = "text-warning";
+            warn.textContent = gettext("Too many occurrences (limited to 100 for preview).");
+            fragment.appendChild(warn);
         } else {
-            previewDiv.innerHTML += `<strong>${gettext("Will create")} ${occurrences.length} ${gettext("shifts:")}</strong><br/>${occurrences.join("<br/>")}`;
+            const summary = document.createElement("strong");
+            summary.textContent = `${gettext("Will create")} ${occurrences.length} ${gettext("shifts:")}`;
+            fragment.appendChild(summary);
+            occurrences.forEach((text, i) => {
+                fragment.appendChild(document.createElement("br"));
+                fragment.appendChild(document.createTextNode(text));
+            });
         }
+
+        previewDiv.replaceChildren(fragment);
         previewDiv.style.display = "block";
     });
 }

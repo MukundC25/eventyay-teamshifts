@@ -20,8 +20,12 @@ export function setupDynamicFormset() {
         const lastRow = rows[rows.length - 1];
         const newRow = lastRow.cloneNode(true);
 
-        const regex = /roles-(\d+)-/g;
-        newRow.innerHTML = newRow.innerHTML.replace(regex, `roles-${formCount}-`);
+        const reindex = (val) => val ? val.replace(/roles-\d+-/, `roles-${formCount}-`) : val;
+        newRow.querySelectorAll("input, select, label, textarea").forEach((el) => {
+            if (el.name) el.name = reindex(el.name);
+            if (el.id) el.id = reindex(el.id);
+            if (el.htmlFor) el.htmlFor = reindex(el.htmlFor);
+        });
 
         newRow.querySelectorAll("input, select").forEach((input) => {
             if (input.type === "checkbox") {
