@@ -1,7 +1,11 @@
+import logging
+
 from django.db.models.signals import post_migrate
 from django.utils.translation import gettext_lazy as _
 
 from . import __version__
+
+logger = logging.getLogger(__name__)
 
 try:
     from eventyay.base.plugins import PluginConfig
@@ -42,4 +46,4 @@ class TeamShiftsApp(PluginConfig):
                 },
             )
         except Exception:
-            pass
+            logger.exception("[TeamShifts] Failed to register beat schedule for dispatch_scheduled_emails")

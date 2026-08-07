@@ -36,9 +36,8 @@ def dispatch_scheduled_emails_task():
 
     for queue_pk, event_id in due:
         cache_key = f"teamshifts_mail_queue_{queue_pk}_enqueued"
-        if not cache.get(cache_key):
+        if cache.add(cache_key, True, timeout=300):
             send_queued_email.delay(event_id, queue_pk)
-            cache.set(cache_key, True, timeout=300)
             logger.info("[TeamShifts] Dispatched scheduled email queue %s", queue_pk)
 
 
