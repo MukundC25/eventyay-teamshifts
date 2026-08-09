@@ -1,9 +1,12 @@
 import logging
 
+from django.core.cache import cache
+from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.urls import reverse
 from django.utils.html import format_html
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django_scopes import scopes_disabled
 from eventyay.base.email import SimpleFunctionalMailTextPlaceholder
@@ -13,8 +16,9 @@ from eventyay.common.signals import periodic_task
 from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import CallForTeamMembers, TeamRole
+from .models import CallForTeamMembers, TeamRole, TeamShiftsEmailQueue
 from .permissions import has_any_teamshifts_permission
+from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
 
@@ -106,13 +110,6 @@ def teamshifts_mail_placeholders(sender, **kwargs):
 @receiver(periodic_task, dispatch_uid="teamshifts_dispatch_scheduled_emails")
 @scopes_disabled()
 def dispatch_scheduled_emails(sender, **kwargs):
-    from django.core.cache import cache
-    from django.db import transaction
-    from django.utils.timezone import now
-
-    from .models import TeamShiftsEmailQueue
-    from .tasks import send_queued_email
-
     MAIL_SEND_BATCH_SIZE = 50
     with transaction.atomic():
         due = list(
