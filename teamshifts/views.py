@@ -17,7 +17,6 @@ from django.views.generic import DeleteView, FormView, ListView, TemplateView, V
 from django_scopes import scope
 from eventyay.base.i18n import LazyI18nString
 from eventyay.base.templatetags.rich_text import rich_text
-from .permissions import TeamShiftsPermissionRequiredMixin
 from eventyay.control.views import PaginationMixin
 
 from .forms import (
@@ -52,6 +51,7 @@ from .models import (
     TeamShiftsEmailTemplate,
     normalize_field_order,
 )
+from .permissions import TeamShiftsPermissionRequiredMixin
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email

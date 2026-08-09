@@ -1,7 +1,5 @@
 import logging
 
-from django.core.cache import cache
-from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.urls import reverse
@@ -15,9 +13,8 @@ from eventyay.common.signals import periodic_task
 from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import CallForTeamMembers, TeamRole, TeamShiftsEmailQueue
+from .models import CallForTeamMembers, TeamRole
 from .permissions import has_any_teamshifts_permission
-from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
 
