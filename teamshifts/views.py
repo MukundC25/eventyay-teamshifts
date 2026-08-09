@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings as django_settings
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, Sum
 from django.forms import inlineformset_factory
@@ -51,7 +52,7 @@ from .models import (
     TeamShiftsEmailTemplate,
     normalize_field_order,
 )
-from .permissions import TeamShiftsPermissionRequiredMixin
+from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, get_allowed_role_ids
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
@@ -242,7 +243,8 @@ class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
     def get(self, request, *args, **kwargs):
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
-        return render(request, self.template_name, {"roles": roles, "form": TeamRoleForm()})
+        allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
+        return render(request, self.template_name, {"roles": roles, "form": TeamRoleForm(), "allowed_role_ids": allowed})
 
     def post(self, request, *args, **kwargs):
         form = TeamRoleForm(request.POST)
@@ -265,6 +267,8 @@ class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
         event = request.event
         with scope(event=event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=event)
+            if not can_act_on_role(request.user, request.organizer, event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             if role.shift_assignments.exists():
                 messages.error(request, _("Cannot delete '%s': it is used by existing shifts.") % role.name)
             else:
@@ -281,19 +285,21 @@ class TeamRoleEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
     def get(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+            if not can_act_on_role(request.user, request.organizer, request.event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             form = TeamRoleForm(instance=role)
         return render(request, self.template_name, {"form": form, "role": role})
 
     def post(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+            if not can_act_on_role(request.user, request.organizer, request.event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             form = TeamRoleForm(request.POST, instance=role)
             if form.is_valid():
                 form.save()
                 messages.success(request, _("Role '%s' updated.") % role.name)
                 return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
-
-            # Refresh the role from DB to discard any invalid form data applied to the instance
             role.refresh_from_db()
         return render(request, self.template_name, {"form": form, "role": role})
 

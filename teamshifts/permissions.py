@@ -1,5 +1,6 @@
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
+from django_scopes import scopes_disabled
 
 
 def has_any_teamshifts_permission(user, organizer, event, request=None):
@@ -13,6 +14,32 @@ def has_any_teamshifts_permission(user, organizer, event, request=None):
         "can_teamshifts_view_email_addresses",
     ]
     return any(user.has_event_permission(organizer, event, p, request=request) for p in teamshifts_perms)
+
+
+def get_allowed_role_ids(user, organizer, event, request=None):
+    if user.has_event_permission(organizer, event, "can_change_event_settings", request=request):
+        return None
+    with scopes_disabled():
+        from eventyay.base.models.organizer import Team
+
+        teams = Team.objects.filter(
+            organizer=organizer,
+            members=user,
+        )
+        for team in teams:
+            if getattr(team, "all_teamshifts_roles", True):
+                return None
+            limit = getattr(team, "limit_teamshifts_roles", None)
+            if isinstance(limit, list) and limit:
+                return set(limit)
+    return set()
+
+
+def can_act_on_role(user, organizer, event, role_pk, request=None):
+    allowed = get_allowed_role_ids(user, organizer, event, request=request)
+    if allowed is None:
+        return True
+    return role_pk in allowed
 
 
 def teamshifts_permission_required(permission):
