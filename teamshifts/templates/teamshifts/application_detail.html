@@ -52,7 +52,7 @@
             <tbody>
                 <tr>
                     <th>{% trans "Email" %}</th>
-                    <td>{{ application.user.email }}</td>
+                    <td>{% if can_view_email %}{{ application.user.email }}{% else %}—{% endif %}</td>
                 </tr>
                 <tr>
                     <th>{% trans "Name" %}</th>

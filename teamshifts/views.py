@@ -520,7 +520,13 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 qs = qs.filter(status=status_filter)
 
             if search:
-                qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                can_view_email = self.request.user.has_event_permission(
+                    self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
+                ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
+                if can_view_email:
+                    qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                else:
+                    qs = qs.filter(Q(user__fullname__icontains=search))
             return qs
 
     def get_context_data(self, **kwargs):
@@ -537,11 +543,17 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 cfm = None
                 field_order = list(CFM_BUILTIN_FIELD_KEYS)
 
+            can_view_email = self.request.user.has_event_permission(
+                self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
+            ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
+
             custom_questions = {str(q.pk): q.question for q in TeamApplicationQuestion.objects.filter(event=event, active=True)}
 
             active_keys = []
             for k in field_order:
                 if k == "role":
+                    continue
+                if k == "email" and not can_view_email:
                     continue
                 if k in CFM_BUILTIN_FIELD_KEYS:
                     if cfm and getattr(cfm, f"ask_{k}", "optional") == "do_not_ask":
@@ -693,6 +705,9 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
             ctx["status_choices"] = ApplicationStatus.choices
+            ctx["can_view_email"] = self.request.user.has_event_permission(
+                self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
+            ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
         return ctx
 
 
