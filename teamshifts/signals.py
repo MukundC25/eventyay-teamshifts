@@ -106,12 +106,30 @@ def teamshifts_mail_placeholders(sender, **kwargs):
 @receiver(periodic_task, dispatch_uid="teamshifts_dispatch_scheduled_emails")
 @scopes_disabled()
 def dispatch_scheduled_emails(sender, **kwargs):
-    try:
-        from .tasks import dispatch_scheduled_emails_task
+    from django.core.cache import cache
+    from django.db import transaction
+    from django.utils.timezone import now
 
-        dispatch_scheduled_emails_task()
-    except Exception:
-        logger.exception("[TeamShifts] Failed in dispatch_scheduled_emails")
+    from .models import TeamShiftsEmailQueue
+    from .tasks import send_queued_email
+
+    MAIL_SEND_BATCH_SIZE = 50
+    with transaction.atomic():
+        due = list(
+            TeamShiftsEmailQueue.objects.filter(
+                send_after__isnull=False,
+                send_after__lte=now(),
+                sent_at__isnull=True,
+            )
+            .select_for_update(skip_locked=True)
+            .order_by("pk")
+            .values_list("pk", "event_id")[:MAIL_SEND_BATCH_SIZE]
+        )
+    for queue_pk, event_id in due:
+        cache_key = f"teamshifts_mail_queue_{queue_pk}_enqueued"
+        if cache.add(cache_key, True, timeout=300):
+            send_queued_email.delay(event_id, queue_pk)
+            logger.info("[TeamShifts] Dispatched scheduled email queue %s", queue_pk)
 
 
 @receiver(post_delete, sender=TeamRole)
