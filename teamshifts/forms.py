@@ -22,6 +22,16 @@ from .models import (
     normalize_field_order,
 )
 
+EVENT_TZ_HELP = _("Time is interpreted in the event timezone.")
+
+
+def get_event_local_now(event):
+    return timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
+
+
+def format_datetime_local(dt):
+    return f"{dt:%Y-%m-%dT%H:%M}"
+
 
 class CallForTeamMembersSettingsForm(forms.ModelForm):
     class Meta:
@@ -41,7 +51,7 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "title": forms.TextInput(attrs={"class": "form-control"}),
         }
         help_texts = {
-            "deadline": _("Time is interpreted in the event timezone."),
+            "deadline": EVENT_TZ_HELP,
         }
 
     def __init__(self, *args, locales=None, **kwargs):
@@ -50,7 +60,7 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
         if locales:
             self.fields["description"].widget.enabled_locales = locales
         if self._event and not self.initial.get("deadline"):
-            self.initial["deadline"] = timezone.localtime(timezone.now(), ZoneInfo(self._event.timezone))
+            self.initial["deadline"] = get_event_local_now(self._event)
 
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
@@ -380,7 +390,7 @@ class EmailComposeForm(forms.Form):
             input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"],
         )
         if self._event:
-            self.fields["send_after"].initial = timezone.localtime(timezone.now(), ZoneInfo(self._event.timezone))
+            self.fields["send_after"].initial = format_datetime_local(get_event_local_now(self._event))
 
 
 class EmailQueueEditForm(forms.ModelForm):
@@ -394,7 +404,7 @@ class EmailQueueEditForm(forms.ModelForm):
             ),
         }
         help_texts = {
-            "send_after": _("Time is interpreted in the event timezone."),
+            "send_after": EVENT_TZ_HELP,
         }
 
     def __init__(self, *args, event=None, **kwargs):
@@ -405,7 +415,7 @@ class EmailQueueEditForm(forms.ModelForm):
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
             if not self.instance.pk or not self.instance.send_after:
-                self.fields["send_after"].initial = timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
+                self.fields["send_after"].initial = format_datetime_local(get_event_local_now(event))
         self.fields["send_after"].input_formats = [
             "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",
@@ -480,8 +490,8 @@ class ShiftForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
         help_texts = {
-            "start_time": _("Time is interpreted in the event timezone."),
-            "end_time": _("Time is interpreted in the event timezone."),
+            "start_time": EVENT_TZ_HELP,
+            "end_time": EVENT_TZ_HELP,
         }
 
     def __init__(self, *args, event=None, **kwargs):
@@ -495,7 +505,7 @@ class ShiftForm(forms.ModelForm):
             from .models import ShiftLocation
 
             if not self.instance.pk:
-                now_local = timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
+                now_local = format_datetime_local(get_event_local_now(event))
                 if not self.initial.get("start_time"):
                     self.initial["start_time"] = now_local
                 if not self.initial.get("end_time"):
