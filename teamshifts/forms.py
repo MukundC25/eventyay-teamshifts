@@ -1,4 +1,7 @@
+from zoneinfo import ZoneInfo
+
 from django import forms
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
@@ -37,11 +40,17 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "deadline": SplitDateTimePickerWidget(),
             "title": forms.TextInput(attrs={"class": "form-control"}),
         }
+        help_texts = {
+            "deadline": _("Time is interpreted in the event timezone."),
+        }
 
     def __init__(self, *args, locales=None, **kwargs):
+        self._event = kwargs.pop("event", None)
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["description"].widget.enabled_locales = locales
+        if self._event and not self.initial.get("deadline"):
+            self.initial["deadline"] = timezone.localtime(timezone.now(), ZoneInfo(self._event.timezone))
 
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
@@ -360,13 +369,18 @@ class EmailComposeForm(forms.Form):
         self.fields["send_after"] = forms.DateTimeField(
             required=False,
             label=_("Schedule for later"),
-            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time."),
+            help_text=_(
+                "Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time. "
+                "Time is interpreted in the event timezone."
+            ),
             widget=forms.DateTimeInput(
                 attrs={"class": "form-control", "type": "datetime-local"},
                 format="%Y-%m-%dT%H:%M",
             ),
             input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"],
         )
+        if self._event:
+            self.fields["send_after"].initial = timezone.localtime(timezone.now(), ZoneInfo(self._event.timezone))
 
 
 class EmailQueueEditForm(forms.ModelForm):
@@ -379,6 +393,9 @@ class EmailQueueEditForm(forms.ModelForm):
                 format="%Y-%m-%dT%H:%M",
             ),
         }
+        help_texts = {
+            "send_after": _("Time is interpreted in the event timezone."),
+        }
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -387,6 +404,8 @@ class EmailQueueEditForm(forms.ModelForm):
             locales = list(event.settings.get("locales") or [event.settings.locale])
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
+            if not self.instance.pk or not self.instance.send_after:
+                self.fields["send_after"].initial = timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
         self.fields["send_after"].input_formats = [
             "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",
@@ -460,6 +479,10 @@ class ShiftForm(forms.ModelForm):
             "location": forms.Select(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
+        help_texts = {
+            "start_time": _("Time is interpreted in the event timezone."),
+            "end_time": _("Time is interpreted in the event timezone."),
+        }
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -470,6 +493,13 @@ class ShiftForm(forms.ModelForm):
             from django_scopes import scopes_disabled
 
             from .models import ShiftLocation
+
+            if not self.instance.pk:
+                now_local = timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
+                if not self.initial.get("start_time"):
+                    self.initial["start_time"] = now_local
+                if not self.initial.get("end_time"):
+                    self.initial["end_time"] = now_local
 
             with scopes_disabled():
                 self.fields["location"].queryset = ShiftLocation.objects.filter(event=event)
