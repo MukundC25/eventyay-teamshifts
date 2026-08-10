@@ -130,6 +130,7 @@ def dispatch_scheduled_emails(sender, **kwargs):
 
 
 @receiver(post_delete, sender=TeamRole)
+@scopes_disabled()
 def team_role_post_delete(sender, instance, **kwargs):
     teams = Team.objects.filter(organizer=instance.event.organizer)
     for team in teams:

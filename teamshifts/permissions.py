@@ -1,3 +1,5 @@
+import functools
+
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext as _
 from django_scopes import scopes_disabled
@@ -26,13 +28,14 @@ def get_allowed_role_ids(user, organizer, event, request=None):
             organizer=organizer,
             members=user,
         )
+        allowed = set()
         for team in teams:
             if getattr(team, "all_teamshifts_roles", True):
                 return None
             limit = getattr(team, "limit_teamshifts_roles", None)
-            if isinstance(limit, list) and limit:
-                return set(limit)
-    return set()
+            if isinstance(limit, list):
+                allowed.update(limit)
+        return allowed
 
 
 def can_act_on_role(user, organizer, event, role_pk, request=None):
@@ -44,6 +47,7 @@ def can_act_on_role(user, organizer, event, role_pk, request=None):
 
 def teamshifts_permission_required(permission):
     def decorator(function):
+        @functools.wraps(function)
         def wrapper(request, *args, **kw):
             if not request.user.is_authenticated:
                 raise PermissionDenied()

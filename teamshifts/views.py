@@ -257,7 +257,8 @@ class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
             return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
-        return render(request, self.template_name, {"roles": roles, "form": form})
+        allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
+        return render(request, self.template_name, {"roles": roles, "form": form, "allowed_role_ids": allowed})
 
 
 class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
@@ -1276,7 +1277,7 @@ class ShiftUpdateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Temp
 
 class ShiftDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, DeleteView):
     model = Shift
-    permission = "can_teamshifts_manage_applicants"
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shift_delete.html"
     context_object_name = "shift"
 
