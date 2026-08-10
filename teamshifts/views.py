@@ -311,17 +311,14 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
             try:
                 cfm = event.call_for_team_members
             except CallForTeamMembers.DoesNotExist:
-                cfm = None
+                raise Http404 from None
 
         from .mail.default_templates import get_default_template
 
         panels = []
         for role in EmailTemplateRoles.values:
-            if cfm:
-                with scope(event=event):
-                    template = cfm.get_mail_template(role)
-            else:
-                template = None
+            with scope(event=event):
+                template = cfm.get_mail_template(role)
             form = EmailTemplateForm(
                 post_data,
                 instance=template,
@@ -329,7 +326,7 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
                 locales=locales,
             )
             is_customised = False
-            if template and template.pk:
+            if template.pk:
                 default_subject, default_body = get_default_template(role)
                 db_subject = str(template.subject).replace("\r\n", "\n").strip()
                 db_body = str(template.body).replace("\r\n", "\n").strip()
@@ -391,7 +388,7 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
 
     def post(self, request, *args, **kwargs):
         panels = self._get_panels(request, post_data=request.POST)
-        all_valid = all(p["form"].is_valid() for p in panels)
+        all_valid = all([p["form"].is_valid() for p in panels])
         if all_valid:
             with scope(event=request.event):
                 for panel in panels:

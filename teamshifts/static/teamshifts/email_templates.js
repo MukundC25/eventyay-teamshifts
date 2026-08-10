@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function () {
           blocks.forEach(function (block) {
-            block.textContent = 'Preview could not be loaded.'
+            block.textContent = (typeof window.gettext === 'function' ? window.gettext('The preview could not be loaded.') : 'The preview could not be loaded.')
           })
         })
     }
