@@ -321,10 +321,37 @@ class EmailTemplateForm(forms.ModelForm):
 
         model = TeamShiftsEmailTemplate
         fields = ("subject", "body")
+        labels = {
+            "subject": _("Subject"),
+            "body": _("Body"),
+        }
+
+    def __init__(self, *args, locales=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["subject"].required = False
+        self.fields["body"].required = False
+        if locales:
+            self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
+            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
+            for field_name in ("subject", "body"):
+                self.fields[field_name].widget.enabled_locales = locales
+
+
+class CustomEmailTemplateForm(forms.ModelForm):
+    class Meta:
+        from .models import TeamShiftsCustomEmailTemplate
+
+        model = TeamShiftsCustomEmailTemplate
+        fields = ("name", "subject", "body")
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+        }
 
     def __init__(self, *args, locales=None, **kwargs):
         super().__init__(*args, **kwargs)
         if locales:
+            self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
+            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
 

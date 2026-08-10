@@ -138,9 +138,29 @@ urlpatterns = [
         name="email_templates",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/preview/",
+        views.EmailTemplatePreviewView.as_view(),
+        name="email_template_preview",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/<str:role>/edit/",
         views.EmailTemplateEditView.as_view(),
         name="email_template_edit",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/custom/add/",
+        views.CustomEmailTemplateCreateView.as_view(),
+        name="custom_email_template_create",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/custom/<int:pk>/edit/",
+        views.CustomEmailTemplateEditView.as_view(),
+        name="custom_email_template_edit",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/custom/<int:pk>/delete/",
+        views.CustomEmailTemplateDeleteView.as_view(),
+        name="custom_email_template_delete",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/applications/<int:pk>/status/",
