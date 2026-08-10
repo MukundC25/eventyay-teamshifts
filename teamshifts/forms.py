@@ -536,21 +536,12 @@ class ShiftForm(forms.ModelForm):
 
 
 class BaseShiftRoleFormSet(forms.BaseInlineFormSet):
-    def non_form_errors(self):
-        errors = super().non_form_errors()
-        if not errors:
-            return errors
-        return forms.utils.ErrorList([_("The same role cannot be added twice on the same shift.") if "duplicate" in str(e).lower() else e for e in errors])
+    def validate_unique(self):
+        pass
 
     def clean(self):
         super().clean()
         if any(self.errors):
-            for error_dict in self.errors:
-                if isinstance(error_dict, dict):
-                    for field_errors in error_dict.values():
-                        for error in field_errors.as_data() if hasattr(field_errors, "as_data") else []:
-                            if getattr(error, "code", None) == "unique":
-                                raise forms.ValidationError(_("The same role cannot be added twice on the same shift."))
             return
 
         roles = set()
