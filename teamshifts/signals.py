@@ -132,8 +132,10 @@ def dispatch_scheduled_emails(sender, **kwargs):
 @receiver(post_delete, sender=TeamRole)
 @scopes_disabled()
 def team_role_post_delete(sender, instance, **kwargs):
-    teams = Team.objects.filter(organizer=instance.event.organizer)
+    teams = Team.objects.filter(
+        organizer=instance.event.organizer,
+        limit_teamshifts_roles__contains=[instance.pk],
+    )
     for team in teams:
-        if isinstance(team.limit_teamshifts_roles, list) and instance.pk in team.limit_teamshifts_roles:
-            team.limit_teamshifts_roles.remove(instance.pk)
-            team.save(update_fields=["limit_teamshifts_roles"])
+        team.limit_teamshifts_roles.remove(instance.pk)
+        team.save(update_fields=["limit_teamshifts_roles"])
