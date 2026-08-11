@@ -1,7 +1,4 @@
-from zoneinfo import ZoneInfo
-
 from django import forms
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
@@ -23,14 +20,6 @@ from .models import (
 )
 
 EVENT_TZ_HELP = _("Time is interpreted in the event timezone.")
-
-
-def get_event_local_now(event):
-    return timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
-
-
-def format_datetime_local(dt):
-    return f"{dt:%Y-%m-%dT%H:%M}"
 
 
 class CallForTeamMembersSettingsForm(forms.ModelForm):
@@ -59,8 +48,6 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["description"].widget.enabled_locales = locales
-        if self._event and not self.initial.get("deadline"):
-            self.initial["deadline"] = get_event_local_now(self._event)
 
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
@@ -499,13 +486,6 @@ class ShiftForm(forms.ModelForm):
             from django_scopes import scopes_disabled
 
             from .models import ShiftLocation
-
-            if not self.instance.pk:
-                now_local = format_datetime_local(get_event_local_now(event))
-                if not self.initial.get("start_time"):
-                    self.initial["start_time"] = now_local
-                if not self.initial.get("end_time"):
-                    self.initial["end_time"] = now_local
 
             with scopes_disabled():
                 self.fields["location"].queryset = ShiftLocation.objects.filter(event=event)
