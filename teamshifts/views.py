@@ -1462,9 +1462,17 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin,
 
             location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
 
+            title_val = data.get("title", {})
+            if isinstance(title_val, dict):
+                shift_name = title_val.get("en", "Shift")
+            elif isinstance(title_val, str):
+                shift_name = title_val
+            else:
+                shift_name = "Shift"
+
             shift = Shift.objects.create(
                 event=event,
-                name=data.get("title", {}).get("en", "Shift"),
+                name=shift_name,
                 description=data.get("description", ""),
                 location=location,
                 start_time=start,
@@ -1475,7 +1483,10 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin,
                 role_id = role_data.get("id")
                 capacity = role_data.get("capacity", 1)
                 if role_id:
-                    ShiftRoleAssignment.objects.create(shift=shift, role_id=role_id, capacity=capacity)
+                    role = TeamRole.objects.filter(pk=role_id, event=event).first()
+                    if not role:
+                        return HttpResponseBadRequest("Role ID does not belong to this event.")
+                    ShiftRoleAssignment.objects.create(shift=shift, role=role, capacity=capacity)
 
             return JsonResponse({"id": shift.id})
 
@@ -1506,7 +1517,11 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, 
                     room_id = room_id.get("id")
                 shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
             if "title" in data:
-                shift.name = data["title"].get("en", shift.name)
+                title_val = data["title"]
+                if isinstance(title_val, dict):
+                    shift.name = title_val.get("en", shift.name)
+                elif isinstance(title_val, str):
+                    shift.name = title_val
             if "description" in data:
                 shift.description = data["description"]
 
@@ -1516,6 +1531,17 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, 
             shift.save()
 
             if "roles" in data:
+                incoming_role_ids = set()
+                for role_data in data["roles"]:
+                    role_id = role_data.get("id")
+                    if role_id:
+                        incoming_role_ids.add(role_id)
+                valid_roles = TeamRole.objects.filter(pk__in=incoming_role_ids, event=event)
+                valid_role_ids = set(valid_roles.values_list("pk", flat=True))
+                invalid_ids = incoming_role_ids - valid_role_ids
+                if invalid_ids:
+                    return HttpResponseBadRequest("One or more role IDs do not belong to this event.")
+                shift.assignments.exclude(role_id__in=incoming_role_ids).delete()
                 shift.role_assignments.all().delete()
                 for role_data in data["roles"]:
                     role_id = role_data.get("id")
@@ -1523,9 +1549,17 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, 
                     if role_id:
                         ShiftRoleAssignment.objects.create(shift=shift, role_id=role_id, capacity=capacity)
             elif "role" in data and "capacity" in data:
+                role_id = data["role"]
+                if role_id:
+                    if not TeamRole.objects.filter(pk=role_id, event=event).exists():
+                        return HttpResponseBadRequest("Role ID does not belong to this event.")
+                if role_id:
+                    shift.assignments.exclude(role_id=role_id).delete()
+                else:
+                    shift.assignments.all().delete()
                 shift.role_assignments.all().delete()
-                if data["role"]:
-                    ShiftRoleAssignment.objects.create(shift=shift, role_id=data["role"], capacity=data.get("capacity", 1))
+                if role_id:
+                    ShiftRoleAssignment.objects.create(shift=shift, role_id=role_id, capacity=data.get("capacity", 1))
 
             return JsonResponse({"status": "ok"})
 
@@ -1573,6 +1607,14 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequired
 
             if role_id and not shift.role_assignments.filter(role_id=role_id).exists():
                 return HttpResponseBadRequest("Role is not configured for this shift.")
+
+            # Capacity check: ensure assignment won't exceed role capacity
+            if role_id:
+                role_assignment = shift.role_assignments.filter(role_id=role_id).first()
+                if role_assignment:
+                    current_count = ShiftAssignment.objects.filter(shift=shift, role_id=role_id).exclude(team_member=user).count()
+                    if current_count >= role_assignment.capacity:
+                        return HttpResponseBadRequest("Role capacity has been reached for this shift.")
 
             ShiftAssignment.objects.update_or_create(
                 shift=shift,
