@@ -99,7 +99,7 @@ class CFMSettingsView(PluginActiveMixin, EventPermissionRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         cfm = self._get_cfm()
-        form = CallForTeamMembersSettingsForm(instance=cfm, locales=request.event.settings.locales)
+        form = CallForTeamMembersSettingsForm(instance=cfm, locales=request.event.settings.locales, event=request.event)
 
         description = cfm.description.data if cfm.description else {}
         if not isinstance(description, dict):
@@ -112,7 +112,7 @@ class CFMSettingsView(PluginActiveMixin, EventPermissionRequiredMixin, View):
 
     def post(self, request, *args, **kwargs):
         cfm = self._get_cfm()
-        form = CallForTeamMembersSettingsForm(request.POST, instance=cfm, locales=request.event.settings.locales)
+        form = CallForTeamMembersSettingsForm(request.POST, instance=cfm, locales=request.event.settings.locales, event=request.event)
         if form.is_valid():
             with scope(event=request.event):
                 form.save()
