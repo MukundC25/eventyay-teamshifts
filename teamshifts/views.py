@@ -883,11 +883,17 @@ class EmailComposeView(PluginActiveMixin, EventPermissionRequiredMixin, FormView
             messages.success(
                 self.request,
                 ngettext(
-                    "Email queued for %(count)d recipient.",
-                    "Email queued for %(count)d recipients.",
+                    "Email sent to %(count)d recipient.",
+                    "Email sent to %(count)d recipients.",
                     len(recipients),
                 )
                 % {"count": len(recipients)},
+            )
+        if action == "send" and not send_after:
+            return redirect(
+                "plugins:teamshifts:email_sent",
+                organizer=self.request.organizer.slug,
+                event=event.slug,
             )
         return redirect(
             "plugins:teamshifts:email_outbox",
