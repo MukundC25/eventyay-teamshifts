@@ -1242,7 +1242,10 @@ class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
         form = ShiftForm(self.request.POST, event=self.request.event, instance=self.shift)
         formset = ShiftRoleFormSet(self.request.POST, prefix="roles", instance=self.shift, form_kwargs={"event": self.request.event})
 
-        if form.is_valid() and formset.is_valid():
+        form_valid = form.is_valid()
+        formset_valid = formset.is_valid()
+
+        if form_valid and formset_valid:
             with scope(event=request.event), transaction.atomic():
                 form.save()
                 formset.save()
