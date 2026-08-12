@@ -89,10 +89,6 @@
             <h4 class='panel-title'>
               <strong>{{ panel.label }}</strong>
               <span class='pull-right'>
-                <a href='{% url "plugins:teamshifts:custom_email_template_edit" organizer=request.organizer.slug event=request.event.slug pk=panel.pk %}'
-                   class='btn btn-default btn-xs'>
-                  <i class='fa fa-edit'></i> {% trans "Edit" %}
-                </a>
                 <a href='{% url "plugins:teamshifts:custom_email_template_delete" organizer=request.organizer.slug event=request.event.slug pk=panel.pk %}'
                    class='btn btn-danger btn-xs'>
                   <i class='fa fa-trash'></i> {% trans "Delete" %}
@@ -101,17 +97,36 @@
             </h4>
           </summary>
           <div class='panel-body'>
-            <div class='form-horizontal'>
-              <div class='form-group'>
-                <label class='col-md-3 control-label'>{% trans "Subject" %}</label>
-                <div class='col-md-9'>
-                  <p class='form-control-static'>{{ panel.form.instance.subject }}</p>
-                </div>
-              </div>
-              <div class='form-group'>
-                <label class='col-md-3 control-label'>{{ panel.label }} &mdash; {% trans "body" %}</label>
-                <div class='col-md-9'>
-                  <div class='well'>{{ panel.form.instance.body|linebreaksbr }}</div>
+            {% bootstrap_field panel.form.name layout="control" %}
+            {% bootstrap_field panel.form.subject layout="control" %}
+            <div class='form-group'>
+              <label class='col-md-3 control-label'>
+                {{ panel.label }} &mdash; {% trans "body" %}
+              </label>
+              <div class='col-md-9'>
+                <ul class='nav nav-tabs' role='tablist'>
+                  <li role='presentation' class='active'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_edit'>
+                      <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                    </a>
+                  </li>
+                  <li role='presentation'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_preview' data-template-preview-tab>
+                      <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                    </a>
+                  </li>
+                </ul>
+                <div class='tab-content'>
+                  <div id='{{ panel.role_slug }}_edit' class='tab-pane fade in active'>
+                    {% bootstrap_field panel.form.body show_label=False form_group_class="" %}
+                  </div>
+                  <div id='{{ panel.role_slug }}_preview' class='tab-pane'>
+                    <div class='mail-preview-group'>
+                      {% for locale in locales %}
+                        <div lang='{{ locale }}' class='mail-preview'></div>
+                      {% endfor %}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

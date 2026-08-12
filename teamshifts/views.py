@@ -388,8 +388,12 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
 
     def post(self, request, *args, **kwargs):
         panels = self._get_panels(request, post_data=request.POST)
-        all_valid = all([p["form"].is_valid() for p in panels])
-        if all_valid:
+        custom_panels = self._get_custom_panels(request, post_data=request.POST)
+
+        builtin_valid = all(p["form"].is_valid() for p in panels)
+        custom_valid = all(p["form"].is_valid() for p in custom_panels)
+
+        if builtin_valid and custom_valid:
             with scope(event=request.event):
                 for panel in panels:
                     form = panel["form"]
@@ -397,13 +401,14 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
                     template.event = request.event
                     template.role = panel["role"]
                     template.save()
+                for panel in custom_panels:
+                    panel["form"].save()
             messages.success(request, _("Email templates have been saved."))
             return redirect(
                 "plugins:teamshifts:email_templates",
                 organizer=request.organizer.slug,
                 event=request.event.slug,
             )
-        custom_panels = self._get_custom_panels(request)
         return render(
             request,
             self.template_name,
@@ -431,6 +436,8 @@ class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, 
 
         event = request.event
         event_locales = list(event.settings.locales)
+        from django.utils.html import escape
+
         region = event.settings.region
 
         sample_values = defaultdict(
@@ -445,7 +452,7 @@ class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, 
         def render_with_placeholders(text):
             highlighted = re.sub(
                 r"\{(\w+)\}",
-                lambda m: f'<span class="placeholder">{sample_values.get(m.group(1), m.group(0))}</span>',
+                lambda m: f'<span class="placeholder">{escape(sample_values.get(m.group(1), m.group(0)))}</span>',
                 text,
             )
             return markdown_compile_email(highlighted)
@@ -1515,34 +1522,6 @@ class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMi
                 event=request.event.slug,
             )
         return render(request, self.template_name, {"form": form})
-
-
-class CustomEmailTemplateEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
-    template_name = "teamshifts/custom_email_template_form.html"
-
-    def _get_template(self, request, pk):
-        with scope(event=request.event):
-            return get_object_or_404(TeamShiftsCustomEmailTemplate, pk=pk, event=request.event)
-
-    def get(self, request, *args, **kwargs):
-        template = self._get_template(request, kwargs["pk"])
-        form = CustomEmailTemplateForm(instance=template, locales=request.event.settings.locales)
-        return render(request, self.template_name, {"form": form, "object": template})
-
-    def post(self, request, *args, **kwargs):
-        template = self._get_template(request, kwargs["pk"])
-        form = CustomEmailTemplateForm(request.POST, instance=template, locales=request.event.settings.locales)
-        if form.is_valid():
-            with scope(event=request.event):
-                form.save()
-            messages.success(request, _("Template saved."))
-            return redirect(
-                "plugins:teamshifts:email_templates",
-                organizer=request.organizer.slug,
-                event=request.event.slug,
-            )
-        return render(request, self.template_name, {"form": form, "object": template})
 
 
 class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
