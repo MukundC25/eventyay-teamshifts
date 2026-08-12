@@ -1,6 +1,12 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
+{% load static %}
+
+{% block custom_header %}
+  {{ block.super }}
+  <script type="module" src="{% static 'teamshifts/schedule_datetime.js' %}"></script>
+{% endblock %}
 
 {% block title %}{% trans "Compose email" %} :: {{ request.event.name }}{% endblock %}
 
