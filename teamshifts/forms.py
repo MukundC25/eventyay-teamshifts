@@ -22,7 +22,9 @@ from .models import (
     normalize_field_order,
 )
 
-EVENT_TZ_HELP = _("Time is interpreted in the event timezone.")
+
+def get_tz_help(event):
+    return _("Times are in the event timezone: %(tz)s.") % {"tz": event.timezone}
 
 
 def get_event_local_now(event):
@@ -50,17 +52,17 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "deadline": SplitDateTimePickerWidget(),
             "title": forms.TextInput(attrs={"class": "form-control"}),
         }
-        help_texts = {
-            "deadline": EVENT_TZ_HELP,
-        }
+        help_texts = {}
 
     def __init__(self, *args, locales=None, **kwargs):
         self._event = kwargs.pop("event", None)
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["description"].widget.enabled_locales = locales
-        if self._event and not self.initial.get("deadline"):
-            self.initial["deadline"] = get_event_local_now(self._event)
+        if self._event:
+            self.fields["deadline"].help_text = get_tz_help(self._event)
+            if not self.initial.get("deadline"):
+                self.initial["deadline"] = get_event_local_now(self._event)
 
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
@@ -379,12 +381,14 @@ class EmailComposeForm(forms.Form):
         self.fields["send_after"] = forms.DateTimeField(
             required=False,
             label=_("Schedule for later"),
-            help_text=_(
-                "Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time. "
-                "Time is interpreted in the event timezone."
-            ),
+            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time. %(tz)s")
+            % {"tz": get_tz_help(self._event) if self._event else ""},
             widget=forms.DateTimeInput(
-                attrs={"class": "form-control", "type": "datetime-local"},
+                attrs={
+                    "class": "form-control",
+                    "type": "datetime-local",
+                    **({"data-schedule-datetime": "1", "data-event-timezone": self._event.timezone} if self._event else {}),
+                },
                 format="%Y-%m-%dT%H:%M",
             ),
             input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"],
@@ -401,9 +405,7 @@ class EmailQueueEditForm(forms.ModelForm):
                 format="%Y-%m-%dT%H:%M",
             ),
         }
-        help_texts = {
-            "send_after": EVENT_TZ_HELP,
-        }
+        help_texts = {}
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -412,6 +414,13 @@ class EmailQueueEditForm(forms.ModelForm):
             locales = list(event.settings.get("locales") or [event.settings.locale])
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
+            self.fields["send_after"].help_text = get_tz_help(event)
+            self.fields["send_after"].widget.attrs.update(
+                {
+                    "data-schedule-datetime": "1",
+                    "data-event-timezone": event.timezone,
+                }
+            )
         self.fields["send_after"].input_formats = [
             "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",
@@ -485,10 +494,7 @@ class ShiftForm(forms.ModelForm):
             "location": forms.Select(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
-        help_texts = {
-            "start_time": EVENT_TZ_HELP,
-            "end_time": EVENT_TZ_HELP,
-        }
+        help_texts = {}
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -496,6 +502,8 @@ class ShiftForm(forms.ModelForm):
         self.fields["start_time"].input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
         self.fields["end_time"].input_formats = self.fields["start_time"].input_formats
         if event is not None:
+            self.fields["start_time"].help_text = get_tz_help(event)
+            self.fields["end_time"].help_text = get_tz_help(event)
             from django_scopes import scopes_disabled
 
             from .models import ShiftLocation
