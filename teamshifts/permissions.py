@@ -1,8 +1,10 @@
 import functools
 
 from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 from django.utils.translation import gettext as _
 from django_scopes import scopes_disabled
+from eventyay.base.models.organizer import Team
 
 
 def has_any_teamshifts_permission(user, organizer, event, request=None):
@@ -22,12 +24,10 @@ def get_allowed_role_ids(user, organizer, event, request=None):
     if user.has_event_permission(organizer, event, "can_change_event_settings", request=request):
         return None
     with scopes_disabled():
-        from eventyay.base.models.organizer import Team
-
         teams = Team.objects.filter(
             organizer=organizer,
             members=user,
-        )
+        ).filter(Q(all_events=True) | Q(limit_events=event))
         allowed = set()
         for team in teams:
             if getattr(team, "all_teamshifts_roles", True):
