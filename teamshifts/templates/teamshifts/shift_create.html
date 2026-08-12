@@ -87,6 +87,9 @@
                                     {% if form.role.errors %}
                                         <div class="help-block">{{ form.role.errors|striptags }}</div>
                                     {% endif %}
+                                    {% if form.non_field_errors %}
+                                        <div class="help-block text-danger">{{ form.non_field_errors|striptags }}</div>
+                                    {% endif %}
                                 </td>
                                 <td class="{% if form.capacity.errors %}has-error{% endif %}">
                                     {{ form.capacity }}
