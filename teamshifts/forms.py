@@ -381,8 +381,8 @@ class EmailComposeForm(forms.Form):
         self.fields["send_after"] = forms.DateTimeField(
             required=False,
             label=_("Schedule for later"),
-            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time. %(tz)s")
-            % {"tz": get_tz_help(self._event) if self._event else ""},
+            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time.")
+            + (f" {get_tz_help(self._event)}" if self._event else ""),
             widget=forms.DateTimeInput(
                 attrs={
                     "class": "form-control",
