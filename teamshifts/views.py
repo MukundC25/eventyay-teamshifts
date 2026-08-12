@@ -1203,6 +1203,7 @@ class ShiftCreateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
             )
 
         ctx = self.get_context_data(form=form, formset=formset, has_locations=has_locations)
+        messages.error(request, _("We could not save your changes. See below for details."))
         return self.render_to_response(ctx)
 
 
@@ -1252,6 +1253,7 @@ class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
                 messages.success(request, _("Shift updated successfully."))
                 return redirect("plugins:teamshifts:shift_edit", organizer=request.event.organizer.slug, event=request.event.slug, pk=self.shift.pk)
         else:
+            messages.error(request, _("We could not save your changes. See below for details."))
             ctx = self.get_context_data(form=form, formset=formset, has_locations=has_locations)
             return self.render_to_response(ctx)
 
