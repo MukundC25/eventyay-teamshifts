@@ -2,12 +2,12 @@ name: Code Style
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, dev ]
     paths-ignore:
       - 'teamshifts/locale/**'
       - 'teamshifts/static/**'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, dev ]
     paths-ignore:
       - 'teamshifts/locale/**'
       - 'teamshifts/static/**'
