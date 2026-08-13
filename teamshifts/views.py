@@ -437,8 +437,8 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
         )
 
 
-class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
 
     def post(self, request, *args, **kwargs):
         from collections import defaultdict
@@ -1553,8 +1553,8 @@ class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
-class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CustomEmailTemplateCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/custom_email_template_form.html"
 
     def get(self, request, *args, **kwargs):
@@ -1577,8 +1577,8 @@ class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMi
         return render(request, self.template_name, {"form": form})
 
 
-class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CustomEmailTemplateDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/custom_email_template_delete.html"
 
     def _get_template(self, request, pk):
@@ -1601,8 +1601,8 @@ class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMi
         )
 
 
-class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleTalksAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         event = request.event
@@ -1719,8 +1719,8 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin,
             return JsonResponse({"id": shift.id})
 
 
-class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def patch(self, request, *args, **kwargs):
         try:
@@ -1799,8 +1799,8 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, 
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleMembersAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         event = request.event
@@ -1813,8 +1813,8 @@ class ShiftScheduleMembersAPIView(PluginActiveMixin, EventPermissionRequiredMixi
             return JsonResponse({"members": members})
 
 
-class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def post(self, request, *args, **kwargs):
         try:
@@ -1865,23 +1865,23 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequired
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleAvailabilitiesAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleAvailabilitiesAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         return JsonResponse({"rooms": {}, "talks": {}})
 
 
-class ShiftScheduleWarningsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleWarningsAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         return JsonResponse({})
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
-class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ShiftScheduleGridEditorView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/schedule_grid.html"
 
     def get_context_data(self, **kwargs):
