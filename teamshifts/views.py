@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 
 from django.conf import settings as django_settings
@@ -24,6 +25,7 @@ from .forms import (
     BaseShiftRoleFormSet,
     CallForTeamMembersApplicationSettingsForm,
     CallForTeamMembersSettingsForm,
+    CustomEmailTemplateForm,
     EmailComposeForm,
     EmailQueueEditForm,
     EmailTemplateForm,
@@ -48,8 +50,8 @@ from .models import (
     TeamApplicationQuestion,
     TeamMemberApplication,
     TeamRole,
+    TeamShiftsCustomEmailTemplate,
     TeamShiftsEmailQueue,
-    TeamShiftsEmailTemplate,
     normalize_field_order,
 )
 
@@ -302,25 +304,167 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
     permission = "can_change_event_settings"
     template_name = "teamshifts/email_templates.html"
 
-    def get(self, request, *args, **kwargs):
+    def _get_panels(self, request, post_data=None):
         event = request.event
+        locales = event.settings.locales
         with scope(event=event):
-            existing = {t.role: t for t in TeamShiftsEmailTemplate.objects.filter(event=event)}
+            try:
+                cfm = event.call_for_team_members
+            except CallForTeamMembers.DoesNotExist:
+                raise Http404 from None
+
         from .mail.default_templates import get_default_template
 
-        rows = []
+        panels = []
         for role in EmailTemplateRoles.values:
-            template = existing.get(role)
-            default_subject, _ = get_default_template(role)
-            rows.append(
+            with scope(event=event):
+                template = cfm.get_mail_template(role)
+            form = EmailTemplateForm(
+                post_data,
+                instance=template,
+                prefix=role,
+                locales=locales,
+            )
+            is_customised = False
+            if template.pk:
+                default_subject, default_body = get_default_template(role)
+                db_subject = str(template.subject).replace("\r\n", "\n").strip()
+                db_body = str(template.body).replace("\r\n", "\n").strip()
+                def_subject = str(default_subject).replace("\r\n", "\n").strip()
+                def_body = str(default_body).replace("\r\n", "\n").strip()
+                if db_subject != def_subject or db_body != def_body:
+                    is_customised = True
+            panels.append(
                 {
                     "role": role,
+                    "role_slug": role.replace(".", "_"),
                     "label": EmailTemplateRoles(role).label,
-                    "subject": template.subject if template else default_subject,
-                    "is_customised": template is not None,
+                    "form": form,
+                    "is_customised": is_customised,
                 }
             )
-        return render(request, self.template_name, {"rows": rows})
+        return panels
+
+    def _get_custom_panels(self, request, post_data=None):
+        locales = request.event.settings.locales
+        with scope(event=request.event):
+            templates = list(TeamShiftsCustomEmailTemplate.objects.filter(event=request.event))
+        panels = []
+        for template in templates:
+            form = CustomEmailTemplateForm(
+                post_data,
+                instance=template,
+                prefix=f"custom_{template.pk}",
+                locales=locales,
+            )
+            panels.append(
+                {
+                    "pk": template.pk,
+                    "label": template.name,
+                    "role_slug": f"custom_{template.pk}",
+                    "form": form,
+                    "is_custom": True,
+                }
+            )
+        return panels
+
+    def get(self, request, *args, **kwargs):
+        panels = self._get_panels(request)
+        custom_panels = self._get_custom_panels(request)
+        return render(
+            request,
+            self.template_name,
+            {
+                "panels": panels,
+                "custom_panels": custom_panels,
+                "locales": request.event.settings.locales,
+                "email_placeholders": [
+                    ("{full_name}", _("The applicant's full name")),
+                    ("{event_name}", _("The event's name")),
+                    ("{role_name}", _("The role applied for")),
+                ],
+            },
+        )
+
+    def post(self, request, *args, **kwargs):
+        panels = self._get_panels(request, post_data=request.POST)
+        custom_panels = self._get_custom_panels(request, post_data=request.POST)
+
+        builtin_valid = all(p["form"].is_valid() for p in panels)
+        custom_valid = all(p["form"].is_valid() for p in custom_panels)
+
+        if builtin_valid and custom_valid:
+            with scope(event=request.event):
+                for panel in panels:
+                    form = panel["form"]
+                    template = form.save(commit=False)
+                    template.event = request.event
+                    template.role = panel["role"]
+                    template.save()
+                for panel in custom_panels:
+                    panel["form"].save()
+            messages.success(request, _("Email templates have been saved."))
+            return redirect(
+                "plugins:teamshifts:email_templates",
+                organizer=request.organizer.slug,
+                event=request.event.slug,
+            )
+        return render(
+            request,
+            self.template_name,
+            {
+                "panels": panels,
+                "custom_panels": custom_panels,
+                "locales": request.event.settings.locales,
+                "email_placeholders": [
+                    ("{full_name}", _("The applicant's full name")),
+                    ("{event_name}", _("The event's name")),
+                    ("{role_name}", _("The role applied for")),
+                ],
+            },
+        )
+
+
+class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+
+    def post(self, request, *args, **kwargs):
+        from collections import defaultdict
+
+        from eventyay.base.i18n import language
+        from eventyay.base.templatetags.rich_text import markdown_compile_email
+
+        event = request.event
+        event_locales = list(event.settings.locales)
+        from django.utils.html import escape
+
+        region = event.settings.region
+
+        sample_values = defaultdict(
+            str,
+            {
+                "full_name": "Jane Doe",
+                "event_name": str(event.name),
+                "role_name": "Volunteer",
+            },
+        )
+
+        def render_with_placeholders(text):
+            highlighted = re.sub(
+                r"\{(\w+)\}",
+                lambda m: f'<span class="placeholder">{escape(sample_values.get(m.group(1), m.group(0)))}</span>',
+                text,
+            )
+            return markdown_compile_email(highlighted)
+
+        body_values = request.POST.getlist("body")
+        previews = {}
+        for i, locale in enumerate(event_locales):
+            text = body_values[i] if i < len(body_values) else ""
+            with language(locale, region):
+                previews[locale] = render_with_placeholders(text)
+
+        return JsonResponse({"previews": previews})
 
 
 class EmailTemplateEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
@@ -1365,3 +1509,51 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             application.arrived = not application.arrived
             application.save(update_fields=["arrived"])
             return JsonResponse({"success": True, "arrived": application.arrived})
+
+
+class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/custom_email_template_form.html"
+
+    def get(self, request, *args, **kwargs):
+        form = CustomEmailTemplateForm(locales=request.event.settings.locales)
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request, *args, **kwargs):
+        form = CustomEmailTemplateForm(request.POST, locales=request.event.settings.locales)
+        if form.is_valid():
+            template = form.save(commit=False)
+            template.event = request.event
+            with scope(event=request.event):
+                template.save()
+            messages.success(request, _("Template created."))
+            return redirect(
+                "plugins:teamshifts:email_templates",
+                organizer=request.organizer.slug,
+                event=request.event.slug,
+            )
+        return render(request, self.template_name, {"form": form})
+
+
+class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/custom_email_template_delete.html"
+
+    def _get_template(self, request, pk):
+        with scope(event=request.event):
+            return get_object_or_404(TeamShiftsCustomEmailTemplate, pk=pk, event=request.event)
+
+    def get(self, request, *args, **kwargs):
+        template = self._get_template(request, kwargs["pk"])
+        return render(request, self.template_name, {"object": template})
+
+    def post(self, request, *args, **kwargs):
+        template = self._get_template(request, kwargs["pk"])
+        with scope(event=request.event):
+            template.delete()
+        messages.success(request, _("Template deleted."))
+        return redirect(
+            "plugins:teamshifts:email_templates",
+            organizer=request.organizer.slug,
+            event=request.event.slug,
+        )
