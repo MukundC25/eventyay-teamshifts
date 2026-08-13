@@ -1209,6 +1209,7 @@ class ShiftCreateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
             )
 
         ctx = self.get_context_data(form=form, formset=formset, has_locations=has_locations)
+        messages.error(request, _("We could not save your changes. See below for details."))
         return self.render_to_response(ctx)
 
 
@@ -1248,7 +1249,10 @@ class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
         form = ShiftForm(self.request.POST, event=self.request.event, instance=self.shift)
         formset = ShiftRoleFormSet(self.request.POST, prefix="roles", instance=self.shift, form_kwargs={"event": self.request.event})
 
-        if form.is_valid() and formset.is_valid():
+        form_valid = form.is_valid()
+        formset_valid = formset.is_valid()
+
+        if form_valid and formset_valid:
             with scope(event=request.event), transaction.atomic():
                 form.save()
                 formset.save()
@@ -1256,7 +1260,8 @@ class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
                 return redirect("plugins:teamshifts:shift_edit", organizer=request.event.organizer.slug, event=request.event.slug, pk=self.shift.pk)
         else:
             messages.error(request, _("We could not save your changes. See below for details."))
-            return self.get(request, form=form, formset=formset, has_locations=has_locations)
+            ctx = self.get_context_data(form=form, formset=formset, has_locations=has_locations)
+            return self.render_to_response(ctx)
 
 
 class ShiftDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, DeleteView):

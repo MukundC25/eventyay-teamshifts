@@ -540,6 +540,9 @@ class ShiftForm(forms.ModelForm):
 
 
 class BaseShiftRoleFormSet(forms.BaseInlineFormSet):
+    def validate_unique(self):
+        pass
+
     def clean(self):
         super().clean()
         if any(self.errors):
