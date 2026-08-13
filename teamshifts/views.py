@@ -832,7 +832,14 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
         event = self.request.event
         with scope(event=event):
             app = get_object_or_404(
-                TeamMemberApplication.objects.select_related("user").prefetch_related("answers__question"),
+                TeamMemberApplication.objects.select_related("user").prefetch_related(
+                    "answers__question",
+                    Prefetch(
+                        "user__shift_assignments",
+                        queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                        to_attr="event_assignments",
+                    ),
+                ),
                 pk=kwargs["pk"],
                 event=event,
             )
