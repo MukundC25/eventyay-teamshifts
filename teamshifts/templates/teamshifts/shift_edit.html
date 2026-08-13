@@ -1,6 +1,12 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
+{% load static %}
+
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static 'teamshifts/shift_edit.js' %}"></script>
+{% endblock %}
 
 {% block content %}
     <h1>{% trans "Edit Shift" %}</h1>
@@ -40,7 +46,7 @@
                 {{ formset.management_form }}
                 {% if formset.non_form_errors %}
                     <div class="alert alert-danger">
-                        {{ formset.non_form_errors }}
+                        {{ formset.non_form_errors|striptags }}
                     </div>
                 {% endif %}
                 <table class="table table-striped" id="roles-table">
@@ -60,6 +66,9 @@
                                     {% if form.role.errors %}
                                         <div class="help-block">{{ form.role.errors|striptags }}</div>
                                     {% endif %}
+                                    {% if form.non_field_errors %}
+                                        <div class="help-block text-danger">{{ form.non_field_errors|striptags }}</div>
+                                    {% endif %}
                                 </td>
                                 <td class="{% if form.capacity.errors %}has-error{% endif %}">
                                     {{ form.capacity }}
@@ -68,12 +77,8 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if form.instance.pk %}
-                                        {{ form.DELETE }}
-                                    {% else %}
-                                        <button type="button" class="btn btn-danger btn-sm remove-role-btn"><i class="fa fa-trash"></i></button>
-                                        <span class="delete-checkbox hidden">{{ form.DELETE }}</span>
-                                    {% endif %}
+                                    <button type="button" class="btn btn-danger btn-sm remove-role-btn"><i class="fa fa-trash"></i></button>
+                                    <span class="delete-checkbox">{{ form.DELETE }}</span>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -94,52 +99,5 @@
             </a>
         </div>
     </form>
-    
-    <div id="empty-role-form" style="display: none;">
-        <tr class="role-form-row">
-            <td>
-                {{ formset.empty_form.role }}
-            </td>
-            <td>
-                {{ formset.empty_form.capacity }}
-            </td>
-            <td>
-                <button type="button" class="btn btn-danger btn-sm remove-role-btn"><i class="fa fa-trash"></i></button>
-                <span class="delete-checkbox hidden">{{ formset.empty_form.DELETE }}</span>
-            </td>
-        </tr>
-    </div>
 
-{% endblock %}
-
-{% block scripts %}
-    {{ block.super }}
-    <script>
-        $(function () {
-            // Add Role functionality
-            var $addRoleBtn = $('#add-role-btn');
-            var $rolesBody = $('#roles-body');
-            var $emptyFormTemplate = $('#empty-role-form tr').clone();
-            var totalFormsInput = $('#id_roles-TOTAL_FORMS');
-            
-            $addRoleBtn.on('click', function () {
-                var currentFormCount = parseInt(totalFormsInput.val(), 10);
-                var $newForm = $emptyFormTemplate.clone();
-                
-                $newForm.html($newForm.html().replace(/__prefix__/g, currentFormCount));
-                
-                $newForm.find('.remove-role-btn').on('click', function() {
-                    $(this).closest('tr').remove();
-                });
-                
-                $rolesBody.append($newForm);
-                totalFormsInput.val(currentFormCount + 1);
-            });
-            
-            // Remove Role functionality for non-saved forms
-            $('.remove-role-btn').on('click', function() {
-                $(this).closest('tr').remove();
-            });
-        });
-    </script>
 {% endblock %}

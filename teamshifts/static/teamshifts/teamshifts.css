@@ -125,3 +125,15 @@ label .optional {
     color: black;
     background: white;
 }
+
+#roles-table .remove-role-btn {
+    display: none;
+}
+
+#roles-table.js-formset-enabled .remove-role-btn {
+    display: inline-block;
+}
+
+#roles-table.js-formset-enabled .delete-checkbox {
+    display: none;
+}

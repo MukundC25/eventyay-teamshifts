@@ -1,4 +1,7 @@
+from zoneinfo import ZoneInfo
+
 from django import forms
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
@@ -20,6 +23,18 @@ from .models import (
 )
 
 
+def get_tz_help(event):
+    return _("Times are in the event timezone: %(tz)s.") % {"tz": event.timezone}
+
+
+def get_event_local_now(event):
+    return timezone.localtime(timezone.now(), ZoneInfo(event.timezone))
+
+
+def format_datetime_local(dt):
+    return f"{dt:%Y-%m-%dT%H:%M}"
+
+
 class CallForTeamMembersSettingsForm(forms.ModelForm):
     class Meta:
         model = CallForTeamMembers
@@ -37,11 +52,17 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "deadline": SplitDateTimePickerWidget(),
             "title": forms.TextInput(attrs={"class": "form-control"}),
         }
+        help_texts = {}
 
     def __init__(self, *args, locales=None, **kwargs):
+        self._event = kwargs.pop("event", None)
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["description"].widget.enabled_locales = locales
+        if self._event:
+            self.fields["deadline"].help_text = get_tz_help(self._event)
+            if not self.initial.get("deadline"):
+                self.initial["deadline"] = get_event_local_now(self._event)
 
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
@@ -321,10 +342,37 @@ class EmailTemplateForm(forms.ModelForm):
 
         model = TeamShiftsEmailTemplate
         fields = ("subject", "body")
+        labels = {
+            "subject": _("Subject"),
+            "body": _("Body"),
+        }
+
+    def __init__(self, *args, locales=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["subject"].required = False
+        self.fields["body"].required = False
+        if locales:
+            self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
+            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
+            for field_name in ("subject", "body"):
+                self.fields[field_name].widget.enabled_locales = locales
+
+
+class CustomEmailTemplateForm(forms.ModelForm):
+    class Meta:
+        from .models import TeamShiftsCustomEmailTemplate
+
+        model = TeamShiftsCustomEmailTemplate
+        fields = ("name", "subject", "body")
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+        }
 
     def __init__(self, *args, locales=None, **kwargs):
         super().__init__(*args, **kwargs)
         if locales:
+            self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
+            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
 
@@ -360,9 +408,14 @@ class EmailComposeForm(forms.Form):
         self.fields["send_after"] = forms.DateTimeField(
             required=False,
             label=_("Schedule for later"),
-            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time."),
+            help_text=_("Leave empty to send immediately. Otherwise the message stays in the outbox until the scheduled time.")
+            + (f" {get_tz_help(self._event)}" if self._event else ""),
             widget=forms.DateTimeInput(
-                attrs={"class": "form-control", "type": "datetime-local"},
+                attrs={
+                    "class": "form-control",
+                    "type": "datetime-local",
+                    **({"data-schedule-datetime": "1", "data-event-timezone": self._event.timezone} if self._event else {}),
+                },
                 format="%Y-%m-%dT%H:%M",
             ),
             input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"],
@@ -379,6 +432,7 @@ class EmailQueueEditForm(forms.ModelForm):
                 format="%Y-%m-%dT%H:%M",
             ),
         }
+        help_texts = {}
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -387,6 +441,13 @@ class EmailQueueEditForm(forms.ModelForm):
             locales = list(event.settings.get("locales") or [event.settings.locale])
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
+            self.fields["send_after"].help_text = get_tz_help(event)
+            self.fields["send_after"].widget.attrs.update(
+                {
+                    "data-schedule-datetime": "1",
+                    "data-event-timezone": event.timezone,
+                }
+            )
         self.fields["send_after"].input_formats = [
             "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",
@@ -460,6 +521,7 @@ class ShiftForm(forms.ModelForm):
             "location": forms.Select(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
+        help_texts = {}
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -467,9 +529,18 @@ class ShiftForm(forms.ModelForm):
         self.fields["start_time"].input_formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
         self.fields["end_time"].input_formats = self.fields["start_time"].input_formats
         if event is not None:
+            self.fields["start_time"].help_text = get_tz_help(event)
+            self.fields["end_time"].help_text = get_tz_help(event)
             from django_scopes import scopes_disabled
 
             from .models import ShiftLocation
+
+            if not self.instance.pk:
+                now_local = format_datetime_local(get_event_local_now(event))
+                if not self.initial.get("start_time"):
+                    self.initial["start_time"] = now_local
+                if not self.initial.get("end_time"):
+                    self.initial["end_time"] = now_local
 
             with scopes_disabled():
                 self.fields["location"].queryset = ShiftLocation.objects.filter(event=event)
@@ -496,6 +567,9 @@ class ShiftForm(forms.ModelForm):
 
 
 class BaseShiftRoleFormSet(forms.BaseInlineFormSet):
+    def validate_unique(self):
+        pass
+
     def clean(self):
         super().clean()
         if any(self.errors):

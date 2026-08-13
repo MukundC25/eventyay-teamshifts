@@ -1373,6 +1373,54 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
+class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/custom_email_template_form.html"
+
+    def get(self, request, *args, **kwargs):
+        form = CustomEmailTemplateForm(locales=request.event.settings.locales)
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request, *args, **kwargs):
+        form = CustomEmailTemplateForm(request.POST, locales=request.event.settings.locales)
+        if form.is_valid():
+            template = form.save(commit=False)
+            template.event = request.event
+            with scope(event=request.event):
+                template.save()
+            messages.success(request, _("Template created."))
+            return redirect(
+                "plugins:teamshifts:email_templates",
+                organizer=request.organizer.slug,
+                event=request.event.slug,
+            )
+        return render(request, self.template_name, {"form": form})
+
+
+class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+    template_name = "teamshifts/custom_email_template_delete.html"
+
+    def _get_template(self, request, pk):
+        with scope(event=request.event):
+            return get_object_or_404(TeamShiftsCustomEmailTemplate, pk=pk, event=request.event)
+
+    def get(self, request, *args, **kwargs):
+        template = self._get_template(request, kwargs["pk"])
+        return render(request, self.template_name, {"object": template})
+
+    def post(self, request, *args, **kwargs):
+        template = self._get_template(request, kwargs["pk"])
+        with scope(event=request.event):
+            template.delete()
+        messages.success(request, _("Template deleted."))
+        return redirect(
+            "plugins:teamshifts:email_templates",
+            organizer=request.organizer.slug,
+            event=request.event.slug,
+        )
+
+
 class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
 
