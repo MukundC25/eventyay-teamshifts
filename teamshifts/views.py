@@ -3,7 +3,6 @@ import re
 from datetime import timedelta
 
 import dateutil.parser
-
 from django.conf import settings as django_settings
 from django.contrib import messages
 from django.db import transaction
@@ -16,8 +15,7 @@ from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
-from django.utils.translation import gettext_lazy as _, ngettext
-from django.utils.translation import get_language, get_language_info
+from django.utils.translation import get_language, get_language_info, gettext_lazy as _, ngettext
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import DeleteView, FormView, ListView, TemplateView, View
 from django_scopes import scope
@@ -59,7 +57,6 @@ from .models import (
     TeamRole,
     TeamShiftsCustomEmailTemplate,
     TeamShiftsEmailQueue,
-    TeamShiftsEmailTemplate,
     normalize_field_order,
 )
 
@@ -1481,22 +1478,26 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
                 else:
                     qs = qs.filter(Q(user__fullname__icontains=search))
 
-            qs = qs.annotate(
-                shifts_assigned=Count("user__shift_assignments", filter=Q(user__shift_assignments__shift__event=event)),
-                hours_scheduled=Sum(
-                    ExpressionWrapper(
-                        F("user__shift_assignments__shift__end_time") - F("user__shift_assignments__shift__start_time"),
-                        output_field=DurationField(),
+            qs = (
+                qs.annotate(
+                    shifts_assigned=Count("user__shift_assignments", filter=Q(user__shift_assignments__shift__event=event)),
+                    hours_scheduled=Sum(
+                        ExpressionWrapper(
+                            F("user__shift_assignments__shift__end_time") - F("user__shift_assignments__shift__start_time"),
+                            output_field=DurationField(),
+                        ),
+                        filter=Q(user__shift_assignments__shift__event=event),
                     ),
-                    filter=Q(user__shift_assignments__shift__event=event),
-                ),
-            ).prefetch_related(
-                Prefetch(
-                    "user__shift_assignments",
-                    queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
-                    to_attr="event_assignments",
-                ),
-            ).order_by("user__fullname", "user__email")
+                )
+                .prefetch_related(
+                    Prefetch(
+                        "user__shift_assignments",
+                        queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                        to_attr="event_assignments",
+                    ),
+                )
+                .order_by("user__fullname", "user__email")
+            )
 
         return qs
 
@@ -1578,7 +1579,6 @@ class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMi
             organizer=request.organizer.slug,
             event=request.event.slug,
         )
-
 
 
 class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
