@@ -1483,6 +1483,12 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
                     ),
                     filter=Q(user__shift_assignments__shift__event=event),
                 ),
+            ).prefetch_related(
+                Prefetch(
+                    "user__shift_assignments",
+                    queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                    to_attr="event_assignments",
+                ),
             ).order_by("user__fullname", "user__email")
 
         return qs
