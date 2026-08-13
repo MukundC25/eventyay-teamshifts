@@ -328,6 +328,50 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         return render(request, self.template_name, {"rows": rows})
 
 
+
+class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+
+    def post(self, request, *args, **kwargs):
+        from collections import defaultdict
+
+        from eventyay.base.i18n import language
+        from eventyay.base.templatetags.rich_text import markdown_compile_email
+
+        event = request.event
+        event_locales = list(event.settings.locales)
+        from django.utils.html import escape
+
+        region = event.settings.region
+
+        sample_values = defaultdict(
+            str,
+            {
+                "full_name": "Jane Doe",
+                "event_name": str(event.name),
+                "role_name": "Volunteer",
+            },
+        )
+
+        def render_with_placeholders(text):
+            highlighted = re.sub(
+                r"\{(\w+)\}",
+                lambda m: f'<span class="placeholder">{escape(sample_values.get(m.group(1), m.group(0)))}</span>',
+                text,
+            )
+            return markdown_compile_email(highlighted)
+
+        body_values = request.POST.getlist("body")
+        previews = {}
+        for i, locale in enumerate(event_locales):
+            text = body_values[i] if i < len(body_values) else ""
+            with language(locale, region):
+                previews[locale] = render_with_placeholders(text)
+
+        return JsonResponse({"previews": previews})
+
+
+
 class EmailTemplateEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
     template_name = "teamshifts/email_template_edit.html"
