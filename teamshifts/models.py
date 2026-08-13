@@ -305,6 +305,13 @@ class ShiftAssignment(models.Model):
         on_delete=models.CASCADE,
         related_name="shift_assignments",
     )
+    role = models.ForeignKey(
+        TeamRole,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="member_assignments",
+    )
     assigned_by = models.ForeignKey(
         "base.User",
         on_delete=models.SET_NULL,
@@ -517,3 +524,26 @@ class TeamShiftsEmailTemplate(models.Model):
 
     def __str__(self):
         return f"{self.event.slug} · {self.get_role_display()}"
+
+
+class TeamShiftsCustomEmailTemplate(models.Model):
+    event = models.ForeignKey(
+        "base.Event",
+        on_delete=models.CASCADE,
+        related_name="teamshifts_custom_email_templates",
+    )
+    name = models.CharField(max_length=200)
+    subject = I18nTextField()
+    body = I18nTextField()
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    objects = ScopedManager(event="event")
+
+    class Meta:
+        verbose_name = _("Custom email template")
+        verbose_name_plural = _("Custom email templates")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.event.slug} · {self.name}"

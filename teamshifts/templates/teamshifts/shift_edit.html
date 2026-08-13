@@ -46,7 +46,7 @@
                 {{ formset.management_form }}
                 {% if formset.non_form_errors %}
                     <div class="alert alert-danger">
-                        {{ formset.non_form_errors }}
+                        {{ formset.non_form_errors|striptags }}
                     </div>
                 {% endif %}
                 <table class="table table-striped" id="roles-table">
@@ -65,6 +65,9 @@
                                     {{ form.role }}
                                     {% if form.role.errors %}
                                         <div class="help-block">{{ form.role.errors|striptags }}</div>
+                                    {% endif %}
+                                    {% if form.non_field_errors %}
+                                        <div class="help-block text-danger">{{ form.non_field_errors|striptags }}</div>
                                     {% endif %}
                                 </td>
                                 <td class="{% if form.capacity.errors %}has-error{% endif %}">

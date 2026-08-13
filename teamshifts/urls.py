@@ -138,9 +138,24 @@ urlpatterns = [
         name="email_templates",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/preview/",
+        views.EmailTemplatePreviewView.as_view(),
+        name="email_template_preview",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/<str:role>/edit/",
         views.EmailTemplateEditView.as_view(),
         name="email_template_edit",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/custom/add/",
+        views.CustomEmailTemplateCreateView.as_view(),
+        name="custom_email_template_create",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/templates/custom/<int:pk>/delete/",
+        views.CustomEmailTemplateDeleteView.as_view(),
+        name="custom_email_template_delete",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/applications/<int:pk>/status/",
@@ -171,6 +186,41 @@ urlpatterns = [
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/<int:pk>/delete/",
         views.EmailQueueDeleteView.as_view(),
         name="email_delete",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/shifts/",
+        views.ShiftScheduleTalksAPIView.as_view(),
+        name="api_shifts",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/shifts/<int:pk>/",
+        views.ShiftScheduleTalkAPIView.as_view(),
+        name="api_shift_detail",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/members/",
+        views.ShiftScheduleMembersAPIView.as_view(),
+        name="api_members",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/assignments/",
+        views.ShiftScheduleAssignmentsAPIView.as_view(),
+        name="api_assignments",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/availabilities/",
+        views.ShiftScheduleAvailabilitiesAPIView.as_view(),
+        name="api_availabilities",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/api/warnings/",
+        views.ShiftScheduleWarningsAPIView.as_view(),
+        name="api_warnings",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/grid/",
+        views.ShiftScheduleGridEditorView.as_view(),
+        name="schedule_grid",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/<int:pk>/send/",

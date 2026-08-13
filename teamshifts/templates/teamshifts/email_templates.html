@@ -1,52 +1,152 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
+{% load bootstrap3 %}
+{% load static %}
 
 {% block title %}{% trans "Email templates" %} :: {{ request.event.name }}{% endblock %}
 
+{% block custom_header %}
+  {{ block.super }}
+  <script defer src='{% static "teamshifts/email_templates.js" %}'></script>
+{% endblock %}
+
 {% block content %}
-    <nav id='event-nav' class='header-nav'>
-        <div class='navigation'>
-            <div class='navigation-title'>
-                <h1>{% trans "Email templates" %}</h1>
+  <nav id='event-nav' class='header-nav'>
+    <div class='navigation'>
+      <div class='navigation-title'>
+        <h1>{% trans "Email templates" %}</h1>
+      </div>
+      <div class='navigation-actions'>
+        <a href='{% url "plugins:teamshifts:custom_email_template_create" organizer=request.organizer.slug event=request.event.slug %}'
+           class='btn btn-primary'>
+          <i class='fa fa-plus'></i> {% trans "New template" %}
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <p class='text-muted'>
+    {% blocktrans trimmed %}
+      These templates are used for the confirmation email sent when an applicant
+      submits an application, and for the accept/reject emails sent from the outbox.
+    {% endblocktrans %}
+  </p>
+
+  <form method='post' class='form-horizontal'
+        data-preview-url='{% url "plugins:teamshifts:email_template_preview" organizer=request.organizer.slug event=request.event.slug %}'>
+    {% csrf_token %}
+    <div class='panel-group' id='email-templates-group'>
+      {% for panel in panels %}
+        <details class='panel panel-default email-template-panel'>
+          <summary class='panel-heading'>
+            <h4 class='panel-title'>
+              <strong>{{ panel.label }}</strong>
+              {% if panel.is_customised %}
+                <span class='label label-info pull-right'>{% trans "Customised" %}</span>
+              {% endif %}
+            </h4>
+          </summary>
+          <div class='panel-body'>
+            {% bootstrap_field panel.form.subject layout="control" %}
+            <div class='form-group'>
+              <label class='col-md-3 control-label'>
+                {{ panel.label }} &mdash; {% trans "body" %}
+              </label>
+              <div class='col-md-9'>
+                <ul class='nav nav-tabs' role='tablist'>
+                  <li role='presentation' class='active'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_edit'>
+                      <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                    </a>
+                  </li>
+                  <li role='presentation'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_preview' data-template-preview-tab>
+                      <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                    </a>
+                  </li>
+                </ul>
+                <div class='tab-content'>
+                  <div id='{{ panel.role_slug }}_edit' class='tab-pane fade in active'>
+                    {% bootstrap_field panel.form.body show_label=False form_group_class="" %}
+                  </div>
+                  <div id='{{ panel.role_slug }}_preview' class='tab-pane'>
+                    <div class='mail-preview-group'>
+                      {% for locale in locales %}
+                        <div lang='{{ locale }}' class='mail-preview'></div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-        </div>
-    </nav>
-    <p>
-        {% blocktrans trimmed %}
-        These templates are sent automatically when an application is received,
-        accepted, or rejected. Placeholders available: <code>{full_name}</code>,
-        <code>{event_name}</code>, <code>{role_name}</code>.
-        {% endblocktrans %}
-    </p>
-    <table class='table'>
-        <thead>
-            <tr>
-                <th>{% trans "Trigger" %}</th>
-                <th>{% trans "Subject" %}</th>
-                <th></th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-                <tr>
-                    <td>{{ row.label }}</td>
-                    <td>{{ row.subject }}</td>
-                    <td>
-                        {% if row.is_customised %}
-                            <span class='label label-info'>{% trans "Customised" %}</span>
-                        {% else %}
-                            <span class='label label-default'>{% trans "Using default" %}</span>
-                        {% endif %}
-                    </td>
-                    <td class='text-right'>
-                        <a href='{% url "plugins:teamshifts:email_template_edit" organizer=request.organizer.slug event=request.event.slug role=row.role %}'
-                           class='btn btn-default btn-sm'>
-                            <i class='fa fa-edit'></i> {% trans "Edit" %}
-                        </a>
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+          </div>
+        </details>
+      {% endfor %}
+
+      {% for panel in custom_panels %}
+        <details class='panel panel-default email-template-panel'>
+          <summary class='panel-heading'>
+            <h4 class='panel-title'>
+              <strong>{{ panel.label }}</strong>
+              <span class='pull-right'>
+                <a href='{% url "plugins:teamshifts:custom_email_template_delete" organizer=request.organizer.slug event=request.event.slug pk=panel.pk %}'
+                   class='btn btn-danger btn-xs'>
+                  <i class='fa fa-trash'></i> {% trans "Delete" %}
+                </a>
+              </span>
+            </h4>
+          </summary>
+          <div class='panel-body'>
+            {% bootstrap_field panel.form.name layout="control" %}
+            {% bootstrap_field panel.form.subject layout="control" %}
+            <div class='form-group'>
+              <label class='col-md-3 control-label'>
+                {{ panel.label }} &mdash; {% trans "body" %}
+              </label>
+              <div class='col-md-9'>
+                <ul class='nav nav-tabs' role='tablist'>
+                  <li role='presentation' class='active'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_edit'>
+                      <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                    </a>
+                  </li>
+                  <li role='presentation'>
+                    <a data-toggle='tab' href='#{{ panel.role_slug }}_preview' data-template-preview-tab>
+                      <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                    </a>
+                  </li>
+                </ul>
+                <div class='tab-content'>
+                  <div id='{{ panel.role_slug }}_edit' class='tab-pane fade in active'>
+                    {% bootstrap_field panel.form.body show_label=False form_group_class="" %}
+                  </div>
+                  <div id='{{ panel.role_slug }}_preview' class='tab-pane'>
+                    <div class='mail-preview-group'>
+                      {% for locale in locales %}
+                        <div lang='{{ locale }}' class='mail-preview'></div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+
+    <fieldset>
+      <legend>{% trans "Available placeholders" %}</legend>
+      <dl class='dl-horizontal'>
+        {% for token, description in email_placeholders %}
+          <dt><code>{{ token }}</code></dt>
+          <dd>{{ description }}</dd>
+        {% endfor %}
+      </dl>
+    </fieldset>
+
+    <div class='form-group submit-group'>
+      <button type='submit' class='btn btn-primary btn-save'>{% trans "Save" %}</button>
+    </div>
+  </form>
 {% endblock %}

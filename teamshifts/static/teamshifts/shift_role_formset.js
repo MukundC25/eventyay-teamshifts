@@ -46,8 +46,6 @@ export function setupDynamicFormset() {
     });
 }
 
-// Delegated handler on #roles-body so cloned rows work without re-binding,
-// and clicks outside a role row are a no-op instead of throwing.
 export function bindRemoveRowHandler() {
     const rolesBody = document.getElementById("roles-body");
     if (!rolesBody) {
@@ -66,17 +64,31 @@ export function bindRemoveRowHandler() {
         }
 
         const deleteCheckbox = row.querySelector('.delete-checkbox input[type="checkbox"]');
-        if (deleteCheckbox) {
+        const idInput = row.querySelector('input[name$="-id"]');
+        const hasExistingRecord = idInput && idInput.value;
+
+        if (hasExistingRecord && deleteCheckbox) {
             deleteCheckbox.checked = true;
             row.style.display = "none";
         } else {
             row.remove();
+            const totalFormsInput = document.getElementById("id_roles-TOTAL_FORMS");
+            if (totalFormsInput) {
+                const newTotal = Math.max(0, parseInt(totalFormsInput.value, 10) - 1);
+                totalFormsInput.value = newTotal;
+                const remainingRows = rolesBody.querySelectorAll(".role-form-row");
+                remainingRows.forEach((r, idx) => {
+                    r.querySelectorAll("input, select, label, textarea").forEach((el) => {
+                        if (el.name) el.name = el.name.replace(/roles-\d+-/, `roles-${idx}-`);
+                        if (el.id) el.id = el.id.replace(/roles-\d+-/, `roles-${idx}-`);
+                        if (el.htmlFor) el.htmlFor = el.htmlFor.replace(/roles-\d+-/, `roles-${idx}-`);
+                    });
+                });
+            }
         }
     });
 }
 
-// Switches the roles table from the no-JS checkbox fallback to the
-// trash-icon-button UX, once this script has actually run (see teamshifts.css).
 export function markFormsetJsEnabled() {
     const rolesTable = document.getElementById("roles-table");
     if (rolesTable) {
