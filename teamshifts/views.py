@@ -59,7 +59,7 @@ from .models import (
     TeamShiftsEmailQueue,
     normalize_field_order,
 )
-from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids
+from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids, has_teamshifts_permission
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
@@ -251,9 +251,16 @@ class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
         allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
-        return render(request, self.template_name, {"roles": roles, "form": TeamRoleForm(), "allowed_role_ids": allowed})
+        can_create = has_teamshifts_permission(request.user, request.organizer, request.event, "can_teamshifts_create_roles", request=request)
+        return render(
+            request,
+            self.template_name,
+            {"roles": roles, "form": TeamRoleForm() if can_create else None, "allowed_role_ids": allowed, "can_create_roles": can_create},
+        )
 
     def post(self, request, *args, **kwargs):
+        if not has_teamshifts_permission(request.user, request.organizer, request.event, "can_teamshifts_create_roles", request=request):
+            raise PermissionDenied(_("You do not have permission to create roles."))
         form = TeamRoleForm(request.POST)
         if form.is_valid():
             role = form.save(commit=False)
@@ -265,7 +272,7 @@ class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
         allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
-        return render(request, self.template_name, {"roles": roles, "form": form, "allowed_role_ids": allowed})
+        return render(request, self.template_name, {"roles": roles, "form": form, "allowed_role_ids": allowed, "can_create_roles": True})
 
 
 class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
@@ -670,9 +677,7 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 qs = qs.filter(status=status_filter)
 
             if search:
-                can_view_email = can_view_email_addresses(
-                    self.request.user, self.request.organizer, event, request=self.request
-                )
+                can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
                 if can_view_email:
                     qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
                 else:
@@ -693,9 +698,7 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 cfm = None
                 field_order = list(CFM_BUILTIN_FIELD_KEYS)
 
-            can_view_email = can_view_email_addresses(
-                self.request.user, self.request.organizer, event, request=self.request
-            )
+            can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
 
             custom_questions = {str(q.pk): q.question for q in TeamApplicationQuestion.objects.filter(event=event, active=True)}
 
@@ -862,9 +865,7 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
             ctx["status_choices"] = ApplicationStatus.choices
-            ctx["can_view_email"] = can_view_email_addresses(
-                self.request.user, self.request.organizer, event, request=self.request
-            )
+            ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
         return ctx
 
 
@@ -981,6 +982,7 @@ class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["preview_recipients"] = getattr(self, "_preview_recipients", None)
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
         return ctx
 
     def form_invalid(self, form):
@@ -1095,6 +1097,7 @@ class EmailOutboxView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Temp
                 .order_by("-created")
             )
         ctx["mails"] = queues
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
         return ctx
 
 
@@ -1113,6 +1116,7 @@ class EmailSentView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Templa
                 .order_by("-sent_at")
             )
         ctx["mails"] = queues
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
         return ctx
 
 
@@ -1132,7 +1136,11 @@ class EmailQueueEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
     def get(self, request, *args, **kwargs):
         queue = self._get_queue()
         form = EmailQueueEditForm(instance=queue, event=request.event)
-        return render(request, self.template_name, {"form": form, "queue": queue})
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "queue": queue, "can_view_email": can_view_email_addresses(request.user, request.organizer, request.event, request=request)},
+        )
 
     def post(self, request, *args, **kwargs):
         queue = self._get_queue()
@@ -1161,7 +1169,11 @@ class EmailQueueEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
                 organizer=request.organizer.slug,
                 event=request.event.slug,
             )
-        return render(request, self.template_name, {"form": form, "queue": queue})
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "queue": queue, "can_view_email": can_view_email_addresses(request.user, request.organizer, request.event, request=request)},
+        )
 
 
 class EmailQueueDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
@@ -1480,9 +1492,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
             if search:
                 can_view_email = False
                 try:
-                    can_view_email = can_view_email_addresses(
-                        self.request.user, self.request.organizer, event, request=self.request
-                    )
+                    can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
                 except ValueError:
                     pass
                 if not can_view_email:
@@ -1528,9 +1538,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
         can_view_email = False
         try:
-            can_view_email = can_view_email_addresses(
-                self.request.user, self.request.organizer, self.request.event, request=self.request
-            )
+            can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
         except ValueError:
             pass
 

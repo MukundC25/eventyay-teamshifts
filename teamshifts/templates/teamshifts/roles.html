@@ -43,7 +43,7 @@
                             <td class='text-muted'>{{ role.description|default:"—" }}</td>
                             <td></td>
                             <td class='text-right flip'>
-                                {% if allowed_role_ids is None or role.pk in allowed_role_ids %}
+                                {% if can_create_roles and allowed_role_ids is None or can_create_roles and role.pk in allowed_role_ids %}
                                 <a href='{% url "plugins:teamshifts:role_edit" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
                                    class='btn btn-default btn-sm'>
                                     <span class='fa fa-edit'></span>
@@ -67,6 +67,7 @@
         </div>
     {% endif %}
 
+    {% if can_create_roles %}
     <div class='panel panel-default'>
         <div class='panel-heading'>
             <h3 class='panel-title'>{% trans "Add a new role" %}</h3>
@@ -86,4 +87,5 @@
             </form>
         </div>
     </div>
+    {% endif %}
 {% endblock %}
