@@ -52,7 +52,7 @@ from .models import (
     TeamShiftsEmailTemplate,
     normalize_field_order,
 )
-from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, get_allowed_role_ids
+from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
@@ -237,7 +237,7 @@ class CFMDescriptionPreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredM
 
 
 class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
-    permission = "can_teamshifts_create_roles"
+    permission = None
     template_name = "teamshifts/roles.html"
 
     def get(self, request, *args, **kwargs):
@@ -505,7 +505,7 @@ class QuestionToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
 
 
 class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, PaginationMixin, ListView):
-    permission = "can_teamshifts_manage_applicants"
+    permission = None
     template_name = "teamshifts/applications.html"
     context_object_name = "applications"
 
@@ -521,9 +521,9 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 qs = qs.filter(status=status_filter)
 
             if search:
-                can_view_email = self.request.user.has_event_permission(
-                    self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
-                ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
+                can_view_email = can_view_email_addresses(
+                    self.request.user, self.request.organizer, event, request=self.request
+                )
                 if can_view_email:
                     qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
                 else:
@@ -544,9 +544,9 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 cfm = None
                 field_order = list(CFM_BUILTIN_FIELD_KEYS)
 
-            can_view_email = self.request.user.has_event_permission(
-                self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
-            ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
+            can_view_email = can_view_email_addresses(
+                self.request.user, self.request.organizer, event, request=self.request
+            )
 
             custom_questions = {str(q.pk): q.question for q in TeamApplicationQuestion.objects.filter(event=event, active=True)}
 
@@ -691,7 +691,7 @@ class BulkApplicationStatusView(PluginActiveMixin, TeamShiftsPermissionRequiredM
 
 
 class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
-    permission = "can_teamshifts_manage_applicants"
+    permission = None
     template_name = "teamshifts/application_detail.html"
 
     def get_context_data(self, **kwargs):
@@ -706,9 +706,9 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
             ctx["status_choices"] = ApplicationStatus.choices
-            ctx["can_view_email"] = self.request.user.has_event_permission(
-                self.request.organizer, event, "can_teamshifts_view_email_addresses", request=self.request
-            ) or self.request.user.has_event_permission(self.request.organizer, event, "can_change_event_settings", request=self.request)
+            ctx["can_view_email"] = can_view_email_addresses(
+                self.request.user, self.request.organizer, event, request=self.request
+            )
         return ctx
 
 
@@ -1299,7 +1299,7 @@ class ShiftDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Dele
 
 
 class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, PaginationMixin, ListView):
-    permission = "can_teamshifts_manage_applicants"
+    permission = None
     template_name = "teamshifts/members.html"
     context_object_name = "members"
 
@@ -1313,11 +1313,8 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
             if search:
                 can_view_email = False
                 try:
-                    can_view_email = self.request.user.has_event_permission(
-                        self.request.organizer,
-                        event,
-                        "can_teamshifts_view_email_addresses",
-                        request=self.request,
+                    can_view_email = can_view_email_addresses(
+                        self.request.user, self.request.organizer, event, request=self.request
                     )
                 except ValueError:
                     pass
@@ -1354,8 +1351,9 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
         can_view_email = False
         try:
-            if self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_teamshifts_view_email_addresses", request=self.request):
-                can_view_email = True
+            can_view_email = can_view_email_addresses(
+                self.request.user, self.request.organizer, self.request.event, request=self.request
+            )
         except ValueError:
             pass
 
@@ -1367,7 +1365,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
 
 class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
-    permission = "can_teamshifts_manage_applicants"
+    permission = "can_teamshifts_create_shifts"
 
     def post(self, request, *args, **kwargs):
         event = request.event
