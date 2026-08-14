@@ -20,7 +20,7 @@ LEAD_PERMISSIONS = frozenset(
     }
 )
 
-ROLE_LEVELS = {
+ROLE_LEVELS = {  # empty string = no teamshifts access (matches model default)
     "coordinator": 2,
     "lead": 1,
     "": 0,

@@ -276,7 +276,7 @@ class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Vie
 
 
 class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
-    permission = "can_teamshifts_create_roles"
+    permission = None
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -294,7 +294,7 @@ class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
 
 
 class TeamRoleEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
-    permission = "can_teamshifts_create_roles"
+    permission = None
     template_name = "teamshifts/role_edit.html"
 
     def get(self, request, *args, **kwargs):
