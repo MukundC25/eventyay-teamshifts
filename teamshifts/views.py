@@ -753,7 +753,9 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
             ctx["columns"] = columns
             ctx["status_choices"] = ApplicationStatus.choices
             ctx["current_status"] = status_filter
-
+            ctx["can_manage_applicants"] = has_teamshifts_permission(
+                self.request.user, self.request.organizer, event, "can_teamshifts_manage_applicants", request=self.request
+            )
             ctx["search"] = search
         return ctx
 
@@ -866,6 +868,9 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
             ctx["application"] = app
             ctx["status_choices"] = ApplicationStatus.choices
             ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
+            ctx["can_manage_applicants"] = has_teamshifts_permission(
+                self.request.user, self.request.organizer, event, "can_teamshifts_manage_applicants", request=self.request
+            )
         return ctx
 
 

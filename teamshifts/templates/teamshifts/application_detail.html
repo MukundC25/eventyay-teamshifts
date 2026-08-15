@@ -32,6 +32,7 @@
             <h2 class="teamshifts-detail-title">
                 {% trans "Application:" %} {{ application.user.get_full_name }}
             </h2>
+            {% if can_manage_applicants %}
             <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}?next={{ request.path|urlencode }}"
                   method="post" class="teamshifts-inline-form" id="detail-status-form">
                 {% csrf_token %}
@@ -41,6 +42,15 @@
                     {% endfor %}
                 </select>
             </form>
+            {% else %}
+            {% if application.status == 'pending' %}
+                <span class="label label-warning">{% trans "Pending" %}</span>
+            {% elif application.status == 'accepted' %}
+                <span class="label label-success">{% trans "Accepted" %}</span>
+            {% else %}
+                <span class="label label-danger">{% trans "Rejected" %}</span>
+            {% endif %}
+            {% endif %}
         </div>
     </div>
 
