@@ -1493,20 +1493,10 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
             qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
 
             search = self.request.GET.get("q", "").strip()
-
             if search:
-                can_view_email = False
-                try:
-                    can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
-                except ValueError:
-                    pass
-                if not can_view_email:
-                    can_view_email = self.request.user.has_event_permission(
-                        self.request.organizer,
-                        event,
-                        "can_view_orders",
-                        request=self.request,
-                    )
+                can_view_email = can_view_email_addresses(
+                    self.request.user, self.request.organizer, event, request=self.request
+                )
                 if can_view_email:
                     qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
                 else:
@@ -1541,16 +1531,10 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
         with scope(event=event):
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
 
-        can_view_email = False
-        try:
-            can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
-        except ValueError:
-            pass
-
-        if not can_view_email and self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_view_orders", request=self.request):
-            can_view_email = True
-
-        ctx["can_view_email"] = can_view_email
+        ctx["can_view_email"] = can_view_email_addresses(
+            self.request.user, self.request.organizer, self.request.event, request=self.request
+        )
+        return ctx
         return ctx
 
 
@@ -1817,12 +1801,17 @@ class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequire
 
     def get(self, request, *args, **kwargs):
         event = request.event
+        show_email = can_view_email_addresses(request.user, request.organizer, event, request=request)
         with scope(event=event):
             apps = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
             members = []
             for app in apps:
                 if app.user:
-                    members.append({"id": app.user.id, "name": app.user.get_full_name() or app.user.email, "email": app.user.email})
+                    name = app.user.get_full_name() or app.user.email
+                    member = {"id": app.user.id, "name": name}
+                    if show_email:
+                        member["email"] = app.user.email
+                    members.append(member)
             return JsonResponse({"members": members})
 
 
