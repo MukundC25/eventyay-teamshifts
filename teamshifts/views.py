@@ -1494,9 +1494,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
             search = self.request.GET.get("q", "").strip()
             if search:
-                can_view_email = can_view_email_addresses(
-                    self.request.user, self.request.organizer, event, request=self.request
-                )
+                can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
                 if can_view_email:
                     qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
                 else:
@@ -1531,9 +1529,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
         with scope(event=event):
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
 
-        ctx["can_view_email"] = can_view_email_addresses(
-            self.request.user, self.request.organizer, self.request.event, request=self.request
-        )
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
         return ctx
         return ctx
 
