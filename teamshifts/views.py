@@ -1891,18 +1891,12 @@ class ShiftScheduleGridEditorView(PluginActiveMixin, TeamShiftsPermissionRequire
         return ctx
 
 
-# ─── Public volunteer-facing shift schedule views ──────────────────────────
-
-
 def _get_accepted_application(request, event):
-    """Return the accepted TeamMemberApplication for the current user, or None."""
     with scope(event=event):
         return TeamMemberApplication.objects.filter(event=event, user=request.user, status=ApplicationStatus.ACCEPTED).first()
 
 
 class PublicShiftScheduleMixin:
-    """Auth + plugin-active + accepted-member gate shared by all public shift views."""
-
     def dispatch(self, request, *args, **kwargs):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
@@ -2091,8 +2085,6 @@ class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
 
 
 class ShiftClaimView(PublicShiftScheduleMixin, View):
-    """POST-only: claim a shift slot with capacity enforcement."""
-
     def post(self, request, *args, **kwargs):
         event = self.event
         shift_pk = kwargs["pk"]
@@ -2122,7 +2114,6 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                     )
                 )
 
-            # Capacity-safe assignment inside a transaction with row-lock
             with transaction.atomic():
                 # Lock the ShiftRoleAssignment row to prevent concurrent over-booking
                 sra_locked = ShiftRoleAssignment.objects.select_for_update().get(pk=sra.pk)
@@ -2155,8 +2146,6 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
 
 
 class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
-    """Per-shift detail page; shows withdraw button if user is assigned."""
-
     template_name = "teamshifts/shift_detail.html"
 
     def get_context_data(self, **kwargs):
@@ -2190,8 +2179,6 @@ class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
 
 
 class ShiftWithdrawView(PublicShiftScheduleMixin, View):
-    """POST-only: drop a claimed shift and notify organizers."""
-
     def post(self, request, *args, **kwargs):
         event = self.event
         shift_pk = kwargs["pk"]
@@ -2213,7 +2200,6 @@ class ShiftWithdrawView(PublicShiftScheduleMixin, View):
 
         messages.success(request, _("You have been withdrawn from the shift."))
 
-        # Notify organizers asynchronously on commit
         transaction.on_commit(lambda: _notify_organizers_shift_dropped(event, request.user, shift))
 
         return redirect(
@@ -2225,7 +2211,6 @@ class ShiftWithdrawView(PublicShiftScheduleMixin, View):
 
 
 def _notify_organizers_shift_dropped(event, volunteer, shift):
-    """Queue a notification email to organizer staff when a volunteer drops a shift."""
     from eventyay.base.models import User
 
     try:
@@ -2238,7 +2223,6 @@ def _notify_organizers_shift_dropped(event, volunteer, shift):
     except Exception:
         return
 
-    # Target: team members with can_change_event_settings for this event
     with scopes_disabled():
         organizer_users = list(
             User.objects.filter(

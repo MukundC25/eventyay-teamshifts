@@ -85,7 +85,6 @@ def teamshifts_header_nav_tab(sender, request=None, **kwargs):
 
 @receiver(header_nav_tabs, dispatch_uid="teamshifts_public_schedule_nav_tab")
 def teamshifts_public_schedule_nav_tab(sender, request=None, **kwargs):
-    """Show the Shift Schedule tab only to accepted team members."""
     if request is None or not request.user.is_authenticated:
         return ""
     from django_scopes import scope as _scope
