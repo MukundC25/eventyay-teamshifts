@@ -201,7 +201,7 @@ def test_dispatch_scheduled_emails_enqueues_due_queues(event):
             sent_at=now(),
         )
 
-    with patch("teamshifts.tasks.send_queued_email") as mock_task:
+    with patch("teamshifts.signals.send_queued_email") as mock_task:
         dispatch_scheduled_emails(sender=None)
 
     enqueued_queue_ids = {call.args[1] for call in mock_task.delay.call_args_list}

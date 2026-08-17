@@ -40,7 +40,7 @@
         <ul class='list-unstyled'>
           {% for recipient in queue.recipients.all|slice:':30' %}
             <li>
-              {{ recipient.email }}
+              {% if can_view_email %}{{ recipient.email }}{% else %}{% trans "Hidden" %}{% endif %}
               {% if recipient.sent_at %}
                 <span class='label label-success'>{% trans "sent" %}</span>
               {% elif recipient.error %}
