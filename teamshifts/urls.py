@@ -14,6 +14,31 @@ event_patterns = [
         views.PublicApplyThanksView.as_view(),
         name="apply_thanks",
     ),
+    path(
+        "teamshifts/shifts/",
+        views.PublicShiftScheduleView.as_view(),
+        name="public_shift_schedule",
+    ),
+    path(
+        "teamshifts/shifts/api/",
+        views.PublicShiftScheduleAPIView.as_view(),
+        name="public_shift_schedule_api",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/",
+        views.ShiftDetailView.as_view(),
+        name="public_shift_detail",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/claim/",
+        views.ShiftClaimView.as_view(),
+        name="public_shift_claim",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/withdraw/",
+        views.ShiftWithdrawView.as_view(),
+        name="public_shift_withdraw",
+    ),
 ]
 
 urlpatterns = [

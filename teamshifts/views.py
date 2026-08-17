@@ -1871,3 +1871,397 @@ class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixi
         path = language_information.get("path", language_information.get("code", "en"))
         ctx["gettext_language"] = path.replace("-", "_")
         return ctx
+# ─── Public volunteer-facing shift schedule views ──────────────────────────
+
+
+def _get_accepted_application(request, event):
+    """Return the accepted TeamMemberApplication for the current user, or None."""
+    with scope(event=event):
+        return (
+            TeamMemberApplication.objects.filter(
+                event=event, user=request.user, status=ApplicationStatus.ACCEPTED
+            ).first()
+        )
+
+
+class PublicShiftScheduleMixin:
+    """Auth + plugin-active + accepted-member gate shared by all public shift views."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if "teamshifts" not in request.event.get_plugins():
+            raise Http404
+        if not request.user.is_authenticated:
+            login_url = reverse("eventyay_common:auth.login")
+            return redirect(f"{login_url}?next={request.get_full_path()}")
+        self.event = request.event
+        self.organizer = request.organizer
+        self.member_application = _get_accepted_application(request, self.event)
+        if self.member_application is None:
+            messages.error(
+                request,
+                _("You need to be an accepted team member to view the shift schedule."),
+            )
+            return redirect(
+                reverse(
+                    "plugins:teamshifts:apply",
+                    kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
+                )
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
+    def get(self, request, *args, **kwargs):
+        event = self.event
+        user = request.user
+
+        with scope(event=event):
+            my_shift_ids = set(
+                ShiftAssignment.objects.filter(
+                    shift__event=event, team_member=user
+                ).values_list("shift_id", flat=True)
+            )
+
+            data = {
+                "version": None,
+                "event_start": event.date_from.isoformat() if event.date_from else "",
+                "event_end": event.date_to.isoformat() if event.date_to else "",
+                "timezone": event.timezone,
+                "locales": ["en"],
+                "rooms": [],
+                "tracks": [],
+                "speakers": [],
+                "talks": [],
+                "warnings": {},
+                "roles": [],
+            }
+
+            for role in event.team_roles.all():
+                data["roles"].append({"id": role.id, "name": {"en": role.name}})
+
+            for loc in event.shift_locations.all():
+                data["rooms"].append({
+                    "id": loc.id,
+                    "name": {"en": loc.name},
+                    "description": {"en": loc.description or ""},
+                })
+
+            shifts = event.shifts.all().prefetch_related(
+                "role_assignments", "role_assignments__role", "assignments"
+            )
+            for shift in shifts:
+                roles_data = []
+                for sra in shift.role_assignments.all():
+                    assignments = []
+                    for a in shift.assignments.filter(
+                        team_member__isnull=False, role_id=sra.role_id
+                    ):
+                        assignments.append({
+                            "id": a.team_member_id,
+                            "name": a.team_member.get_full_name() or a.team_member.email,
+                        })
+                    roles_data.append({
+                        "id": sra.role_id,
+                        "name": {"en": sra.role.name},
+                        "capacity": sra.capacity,
+                        "assigned": assignments,
+                        "is_restricted": sra.role.is_restricted,
+                    })
+
+                duration = (
+                    int((shift.end_time - shift.start_time).total_seconds() / 60)
+                    if shift.end_time and shift.start_time
+                    else 0
+                )
+                data["talks"].append({
+                    "id": shift.id,
+                    "code": str(shift.id),
+                    "title": {"en": shift.name or "Shift"},
+                    "abstract": "",
+                    "description": shift.description,
+                    "room": shift.location_id,
+                    "start": shift.start_time.isoformat() if shift.start_time else "",
+                    "end": shift.end_time.isoformat() if shift.end_time else "",
+                    "duration": duration,
+                    "roles": roles_data,
+                    "state": "confirmed",
+                    "is_claimed_by_me": shift.id in my_shift_ids,
+                })
+
+        return JsonResponse(data)
+
+
+class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
+    template_name = "teamshifts/shift_schedule.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        import json as _json
+
+        event = self.event
+
+        with scope(event=event):
+            locations = list(event.shift_locations.all())
+            shifts = list(
+                event.shifts.all().prefetch_related(
+                    "role_assignments", "role_assignments__role", "assignments"
+                )
+            )
+
+        rooms = []
+        for loc in locations:
+            rooms.append({
+                "id": loc.id,
+                "name": loc.name,
+                "description": loc.description or "",
+            })
+
+        talks = []
+        for shift in shifts:
+            duration = (
+                int((shift.end_time - shift.start_time).total_seconds() / 60)
+                if shift.end_time and shift.start_time
+                else 0
+            )
+            roles_data = []
+            for sra in shift.role_assignments.all():
+                assigned_members = list(
+                    shift.assignments.filter(role_id=sra.role_id).select_related("team_member")
+                )
+                assigned_names = [
+                    a.team_member.get_full_name() or a.team_member.email
+                    for a in assigned_members if a.team_member
+                ]
+                roles_data.append({
+                    "id": sra.role_id,
+                    "name": sra.role.name,
+                    "capacity": sra.capacity,
+                    "assigned_count": len(assigned_members),
+                    "assigned_names": assigned_names,
+                    "is_restricted": sra.role.is_restricted,
+                })
+            abstract = shift.description or ""
+
+            talks.append({
+                "code": f"shift-{shift.id}",
+                "id": shift.id,
+                "title": shift.name or "Shift",
+                "abstract": abstract,
+                "description": shift.description or "",
+                "speakers": [],
+                "roles": roles_data,
+                "track": None,
+                "start": shift.start_time.isoformat() if shift.start_time else None,
+                "end": shift.end_time.isoformat() if shift.end_time else None,
+                "room": shift.location_id,
+                "duration": duration,
+                "state": "confirmed",
+                "do_not_record": False,
+            })
+
+        schedule_data = {
+            "talks": talks,
+            "rooms": rooms,
+            "tracks": [],
+            "speakers": [],
+            "version": None,
+            "timezone": str(event.timezone),
+            "event_start": event.date_from.isoformat() if event.date_from else "",
+            "event_end": event.date_to.isoformat() if event.date_to else "",
+            "content_locales": list(event.settings.locales or ["en"]),
+            "feature_flags": {},
+        }
+
+        json_str = _json.dumps(schedule_data, default=str)
+        json_escaped = json_str.translate({ord(">"): "\\u003E", ord("<"): "\\u003C", ord("&"): "\\u0026"})
+
+        ctx.update({
+            "event": event,
+            "event_tz": str(event.timezone),
+            "schedule_data_json": json_escaped,
+        })
+        return ctx
+
+
+class ShiftClaimView(PublicShiftScheduleMixin, View):
+    """POST-only: claim a shift slot with capacity enforcement."""
+
+    def post(self, request, *args, **kwargs):
+        event = self.event
+        shift_pk = kwargs["pk"]
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=shift_pk, event=event)
+            sra = shift.role_assignments.select_related("role").first()
+
+            if sra is None:
+                messages.error(request, _("This shift has no roles configured."))
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_schedule",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                    )
+                )
+
+            if sra.role.is_restricted:
+                messages.error(
+                    request,
+                    _("This shift requires organizer assignment — you cannot sign up directly."),
+                )
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_schedule",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                    )
+                )
+
+            # Capacity-safe assignment inside a transaction with row-lock
+            with transaction.atomic():
+                # Lock the ShiftRoleAssignment row to prevent concurrent over-booking
+                sra_locked = ShiftRoleAssignment.objects.select_for_update().get(pk=sra.pk)
+                current_count = shift.assignments.count()
+                if current_count >= sra_locked.capacity:
+                    messages.error(request, _("Sorry, this shift is now full."))
+                    return redirect(
+                        reverse(
+                            "plugins:teamshifts:public_shift_schedule",
+                            kwargs={"organizer": self.organizer.slug, "event": event.slug},
+                        )
+                    )
+                assignment_obj, created = ShiftAssignment.objects.get_or_create(
+                    shift=shift,
+                    team_member=request.user,
+                    defaults={"assigned_by": None},
+                )
+
+            if created:
+                messages.success(request, _("You have been signed up for the shift."))
+            else:
+                messages.info(request, _("You were already signed up for this shift."))
+
+        return redirect(
+            reverse(
+                "plugins:teamshifts:public_shift_schedule",
+                kwargs={"organizer": self.organizer.slug, "event": event.slug},
+            )
+        )
+
+
+class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
+    """Per-shift detail page; shows withdraw button if user is assigned."""
+
+    template_name = "teamshifts/shift_detail.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        event = self.event
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=self.kwargs["pk"], event=event)
+            role_rows = []
+            for sra in shift.role_assignments.select_related("role").all():
+                role_rows.append(
+                    {
+                        "role": sra.role,
+                        "capacity": sra.capacity,
+                        "assigned_count": shift.assignments.count(),
+                        "is_restricted": sra.role.is_restricted,
+                    }
+                )
+
+            my_assignment = ShiftAssignment.objects.filter(
+                shift=shift, team_member=self.request.user
+            ).first()
+
+        ctx.update(
+            {
+                "event": event,
+                "shift": shift,
+                "role_rows": role_rows,
+                "my_assignment": my_assignment,
+            }
+        )
+        return ctx
+
+
+class ShiftWithdrawView(PublicShiftScheduleMixin, View):
+    """POST-only: drop a claimed shift and notify organizers."""
+
+    def post(self, request, *args, **kwargs):
+        event = self.event
+        shift_pk = kwargs["pk"]
+
+        with scope(event=event):
+            shift = get_object_or_404(Shift, pk=shift_pk, event=event)
+            assignment = ShiftAssignment.objects.filter(
+                shift=shift, team_member=request.user
+            ).first()
+
+            if assignment is None:
+                messages.error(request, _("You are not signed up for this shift."))
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:public_shift_detail",
+                        kwargs={"organizer": self.organizer.slug, "event": event.slug, "pk": shift_pk},
+                    )
+                )
+
+            assignment.delete()
+
+        messages.success(request, _("You have been withdrawn from the shift."))
+
+        # Notify organizers asynchronously on commit
+        transaction.on_commit(
+            lambda: _notify_organizers_shift_dropped(event, request.user, shift)
+        )
+
+        return redirect(
+            reverse(
+                "plugins:teamshifts:public_shift_schedule",
+                kwargs={"organizer": self.organizer.slug, "event": event.slug},
+            )
+        )
+
+
+def _notify_organizers_shift_dropped(event, volunteer, shift):
+    """Queue a notification email to organizer staff when a volunteer drops a shift."""
+    from eventyay.base.models import User
+
+    try:
+        cfm = event.call_for_team_members
+    except CallForTeamMembers.DoesNotExist:
+        return
+
+    try:
+        template = cfm.get_mail_template(EmailTemplateRoles.SHIFT_DROPPED)
+    except Exception:
+        return
+
+    # Target: team members with can_change_event_settings for this event
+    with scopes_disabled():
+        organizer_users = list(
+            User.objects.filter(
+                teams__organizer=event.organizer,
+                teams__can_change_event_settings=True,
+                teams__all_events=True,
+            ).distinct()
+        )
+        if not organizer_users:
+            organizer_users = list(
+                User.objects.filter(
+                    teams__organizer=event.organizer,
+                    teams__limit_events=event,
+                    teams__can_change_event_settings=True,
+                ).distinct()
+            )
+
+    if not organizer_users:
+        return
+
+    queue_email(
+        event=event,
+        subject=template.subject,
+        message=template.body,
+        recipients=organizer_users,
+        status_filter="",
+    )

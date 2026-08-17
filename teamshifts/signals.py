@@ -11,7 +11,7 @@ from eventyay.common.signals import periodic_task
 from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import CallForTeamMembers
+from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,34 @@ def teamshifts_header_nav_tab(sender, request=None, **kwargs):
         apply_url,
         "active" if is_active else "",
         tab_title,
+    )
+
+
+@receiver(header_nav_tabs, dispatch_uid="teamshifts_public_schedule_nav_tab")
+def teamshifts_public_schedule_nav_tab(sender, request=None, **kwargs):
+    """Show the Shift Schedule tab only to accepted team members."""
+    if request is None or not request.user.is_authenticated:
+        return ""
+    from django_scopes import scope as _scope
+
+    with _scope(event=sender):
+        is_accepted = TeamMemberApplication.objects.filter(
+            event=sender,
+            user=request.user,
+            status=ApplicationStatus.ACCEPTED,
+        ).exists()
+    if not is_accepted:
+        return ""
+    schedule_url = reverse(
+        "plugins:teamshifts:public_shift_schedule",
+        kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
+    )
+    is_active = request is not None and "/teamshifts/shifts/" in getattr(request, "path_info", "")
+    return format_html(
+        '<a href="{}" class="header-tab {}"><i class="fa fa-calendar-check-o"></i> {}</a>',
+        schedule_url,
+        "active" if is_active else "",
+        _("Shift Schedule"),
     )
 
 
