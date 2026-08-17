@@ -473,7 +473,7 @@ class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, 
         body_values = request.POST.getlist("body")
         previews = {}
         for i, locale in enumerate(event_locales):
-            text = body_values[i] if i < len(body_values) else ""
+            text = request.POST.get(f"body_{locale}") or (body_values[i] if i < len(body_values) else "")
             with language(locale, region):
                 previews[locale] = render_with_placeholders(text)
 

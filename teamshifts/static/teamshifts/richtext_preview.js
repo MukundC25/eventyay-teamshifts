@@ -53,7 +53,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function render() {
       var params = new URLSearchParams()
       wrapper.querySelectorAll('textarea').forEach(function (ta) {
-        params.append('body', ta.value)
+        var lang = ta.getAttribute('lang') || ''
+        params.append(lang ? 'body_' + lang : 'body', ta.value)
       })
 
       fetch(previewUrl, {
