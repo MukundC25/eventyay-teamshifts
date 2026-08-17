@@ -35,7 +35,7 @@
         <button type="submit" class="btn btn-default">{% trans "Filter" %}</button>
     </form>
     
-    {% if applications %}
+    {% if applications and can_manage_applicants %}
         <div class="pull-right">
             <button type="submit" form="bulk-action-form" name="action" value="accept" class="btn btn-success teamshifts-bulk-action-btn">
                 <span class="fa fa-check"></span> {% trans "Bulk Accept" %}
@@ -56,7 +56,9 @@
                 <thead>
                     <tr>
                         <th class="teamshifts-select-all-col">
+                            {% if can_manage_applicants %}
                             <input type="checkbox" id="select-all" title="{% trans 'Select all' %}" aria-label="{% trans 'Select all' %}">
+                            {% endif %}
                         </th>
                         {% for col in columns %}
                             <th>{{ col.label }}</th>
@@ -70,12 +72,15 @@
                     {% for app in applications %}
                         <tr>
                             <td class="teamshifts-checkbox-cell">
+                                {% if can_manage_applicants %}
                                 <input type="checkbox" name="application_ids" value="{{ app.pk }}" form="bulk-action-form" class="app-checkbox" aria-label="{% trans 'Select application' %}">
+                                {% endif %}
                             </td>
                             {% for val in app.dynamic_values %}
                                 <td>{{ val|default:"—" }}</td>
                             {% endfor %}
                             <td class="text-nowrap">
+                                {% if can_manage_applicants %}
                                 <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=app.pk %}"
                                       method="post" id="status-form-{{ app.pk }}" class="teamshifts-inline-form">
                                     {% csrf_token %}
@@ -85,6 +90,15 @@
                                         {% endfor %}
                                     </select>
                                 </form>
+                                {% else %}
+                                {% if app.status == 'pending' %}
+                                    <span class="label label-warning">{% trans "Pending" %}</span>
+                                {% elif app.status == 'accepted' %}
+                                    <span class="label label-success">{% trans "Accepted" %}</span>
+                                {% else %}
+                                    <span class="label label-danger">{% trans "Rejected" %}</span>
+                                {% endif %}
+                                {% endif %}
                             </td>
                             <td>{{ app.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
                             <td class="text-right flip">

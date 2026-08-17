@@ -5,6 +5,7 @@ from datetime import timedelta
 import dateutil.parser
 from django.conf import settings as django_settings
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
@@ -22,7 +23,6 @@ from django_scopes import scope
 from eventyay.base.i18n import LazyI18nString
 from eventyay.base.models import User
 from eventyay.base.templatetags.rich_text import rich_text
-from eventyay.control.permissions import EventPermissionRequiredMixin
 from eventyay.control.views import PaginationMixin
 
 from .forms import (
@@ -59,6 +59,7 @@ from .models import (
     TeamShiftsEmailQueue,
     normalize_field_order,
 )
+from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids, has_teamshifts_permission
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
@@ -72,8 +73,8 @@ class PluginActiveMixin:
         return super().dispatch(request, *args, **kwargs)
 
 
-class TeamShiftsDashboard(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class TeamShiftsDashboard(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = None
     template_name = "teamshifts/dashboard.html"
 
     def get_context_data(self, **kwargs):
@@ -95,8 +96,8 @@ class TeamShiftsDashboard(PluginActiveMixin, EventPermissionRequiredMixin, Templ
         return ctx
 
 
-class CFMSettingsView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CFMSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
     template_name = "teamshifts/cfm_settings.html"
 
     def _get_cfm(self):
@@ -135,8 +136,8 @@ class CFMSettingsView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return render(request, self.template_name, {"form": form, "cfm": cfm, "description_previews": description_previews})
 
 
-class CFMApplicationFormView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CFMApplicationFormView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
     template_name = "teamshifts/cfm_application_form.html"
 
     def _get_cfm(self):
@@ -221,10 +222,10 @@ class CFMApplicationFormView(PluginActiveMixin, EventPermissionRequiredMixin, Vi
         return render(request, self.template_name, self._ctx(cfm, form, questions))
 
 
-class CFMDescriptionPreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+class CFMDescriptionPreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
     """Render draft description text with the same Markdown conversion as the public call page."""
 
-    permission = "can_change_event_settings"
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         event_locales = set(request.event.settings.locales)
@@ -242,16 +243,24 @@ class CFMDescriptionPreviewView(PluginActiveMixin, EventPermissionRequiredMixin,
         return JsonResponse({"msgs": msgs})
 
 
-class TeamRoleListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = None
     template_name = "teamshifts/roles.html"
 
     def get(self, request, *args, **kwargs):
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
-        return render(request, self.template_name, {"roles": roles, "form": TeamRoleForm()})
+        allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
+        can_create = has_teamshifts_permission(request.user, request.organizer, request.event, "can_teamshifts_create_roles", request=request)
+        return render(
+            request,
+            self.template_name,
+            {"roles": roles, "form": TeamRoleForm() if can_create else None, "allowed_role_ids": allowed, "can_create_roles": can_create},
+        )
 
     def post(self, request, *args, **kwargs):
+        if not has_teamshifts_permission(request.user, request.organizer, request.event, "can_teamshifts_create_roles", request=request):
+            raise PermissionDenied(_("You do not have permission to create roles."))
         form = TeamRoleForm(request.POST)
         if form.is_valid():
             role = form.save(commit=False)
@@ -262,16 +271,19 @@ class TeamRoleListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
             return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
         with scope(event=request.event):
             roles = list(TeamRole.objects.filter(event=request.event))
-        return render(request, self.template_name, {"roles": roles, "form": form})
+        allowed = get_allowed_role_ids(request.user, request.organizer, request.event, request=request)
+        return render(request, self.template_name, {"roles": roles, "form": form, "allowed_role_ids": allowed, "can_create_roles": True})
 
 
-class TeamRoleDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class TeamRoleDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = None
 
     def post(self, request, *args, **kwargs):
         event = request.event
         with scope(event=event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=event)
+            if not can_act_on_role(request.user, request.organizer, event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             if role.shift_assignments.exists():
                 messages.error(request, _("Cannot delete '%s': it is used by existing shifts.") % role.name)
             else:
@@ -281,32 +293,34 @@ class TeamRoleDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=event.slug)
 
 
-class TeamRoleEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class TeamRoleEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = None
     template_name = "teamshifts/role_edit.html"
 
     def get(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+            if not can_act_on_role(request.user, request.organizer, request.event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             form = TeamRoleForm(instance=role)
         return render(request, self.template_name, {"form": form, "role": role})
 
     def post(self, request, *args, **kwargs):
         with scope(event=request.event):
             role = get_object_or_404(TeamRole, pk=kwargs["pk"], event=request.event)
+            if not can_act_on_role(request.user, request.organizer, request.event, role.pk, request=request):
+                raise PermissionDenied(_("You do not have permission to manage this role."))
             form = TeamRoleForm(request.POST, instance=role)
             if form.is_valid():
                 form.save()
                 messages.success(request, _("Role '%s' updated.") % role.name)
                 return redirect("plugins:teamshifts:roles", organizer=request.organizer.slug, event=request.event.slug)
-
-            # Refresh the role from DB to discard any invalid form data applied to the instance
             role.refresh_from_db()
         return render(request, self.template_name, {"form": form, "role": role})
 
 
-class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/email_templates.html"
 
     def _get_panels(self, request, post_data=None):
@@ -430,8 +444,8 @@ class EmailTemplateListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         )
 
 
-class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
 
     def post(self, request, *args, **kwargs):
         from collections import defaultdict
@@ -472,8 +486,8 @@ class EmailTemplatePreviewView(PluginActiveMixin, EventPermissionRequiredMixin, 
         return JsonResponse({"previews": previews})
 
 
-class EmailTemplateEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailTemplateEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/email_template_edit.html"
 
     def _get_or_seed(self, request, role):
@@ -523,8 +537,8 @@ class EmailTemplateEditView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         )
 
 
-class QuestionEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class QuestionEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
     template_name = "teamshifts/question_edit.html"
 
     def _get_instance(self, request, pk):
@@ -562,8 +576,8 @@ class QuestionEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return render(request, self.template_name, {"form": form, "question": instance})
 
 
-class QuestionDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class QuestionDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -582,8 +596,8 @@ class QuestionDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return redirect("plugins:teamshifts:cfm_settings", organizer=request.organizer.slug, event=event.slug)
 
 
-class QuestionReorderView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class QuestionReorderView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         try:
@@ -616,8 +630,8 @@ class QuestionReorderView(PluginActiveMixin, EventPermissionRequiredMixin, View)
         return HttpResponse(status=204)
 
 
-class QuestionToggleView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class QuestionToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -646,8 +660,8 @@ class QuestionToggleView(PluginActiveMixin, EventPermissionRequiredMixin, View):
         return JsonResponse({"success": True, "field": field, "value": value})
 
 
-class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, PaginationMixin, ListView):
-    permission = "can_change_event_settings"
+class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, PaginationMixin, ListView):
+    permission = None
     template_name = "teamshifts/applications.html"
     context_object_name = "applications"
 
@@ -663,7 +677,11 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Pagin
                 qs = qs.filter(status=status_filter)
 
             if search:
-                qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
+                if can_view_email:
+                    qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
+                else:
+                    qs = qs.filter(Q(user__fullname__icontains=search))
             return qs
 
     def get_context_data(self, **kwargs):
@@ -680,11 +698,15 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Pagin
                 cfm = None
                 field_order = list(CFM_BUILTIN_FIELD_KEYS)
 
+            can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
+
             custom_questions = {str(q.pk): q.question for q in TeamApplicationQuestion.objects.filter(event=event, active=True)}
 
             active_keys = []
             for k in field_order:
                 if k == "role":
+                    continue
+                if k == "email" and not can_view_email:
                     continue
                 if k in CFM_BUILTIN_FIELD_KEYS:
                     if cfm and getattr(cfm, f"ask_{k}", "optional") == "do_not_ask":
@@ -731,13 +753,15 @@ class ApplicationListView(PluginActiveMixin, EventPermissionRequiredMixin, Pagin
             ctx["columns"] = columns
             ctx["status_choices"] = ApplicationStatus.choices
             ctx["current_status"] = status_filter
-
+            ctx["can_manage_applicants"] = has_teamshifts_permission(
+                self.request.user, self.request.organizer, event, "can_teamshifts_manage_applicants", request=self.request
+            )
             ctx["search"] = search
         return ctx
 
 
-class ApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ApplicationStatusView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -770,8 +794,8 @@ class ApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
 
 
-class BulkApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class BulkApplicationStatusView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_manage_applicants"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -820,8 +844,8 @@ class BulkApplicationStatusView(PluginActiveMixin, EventPermissionRequiredMixin,
         return redirect(reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
 
 
-class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = None
     template_name = "teamshifts/application_detail.html"
 
     def get_context_data(self, **kwargs):
@@ -843,6 +867,10 @@ class ApplicationDetailView(PluginActiveMixin, EventPermissionRequiredMixin, Tem
             app.rendered_answers = [{"question": a.question, "value": render_answer_for_review(a.question, a.answer)} for a in app.answers.all()]
             ctx["application"] = app
             ctx["status_choices"] = ApplicationStatus.choices
+            ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
+            ctx["can_manage_applicants"] = has_teamshifts_permission(
+                self.request.user, self.request.organizer, event, "can_teamshifts_manage_applicants", request=self.request
+            )
         return ctx
 
 
@@ -932,8 +960,8 @@ class PublicApplyThanksView(TemplateView):
         return ctx
 
 
-class EmailComposeView(PluginActiveMixin, EventPermissionRequiredMixin, FormView):
-    permission = "can_change_event_settings"
+class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, FormView):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/emails/compose.html"
     form_class = EmailComposeForm
 
@@ -959,6 +987,7 @@ class EmailComposeView(PluginActiveMixin, EventPermissionRequiredMixin, FormView
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["preview_recipients"] = getattr(self, "_preview_recipients", None)
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
         return ctx
 
     def form_invalid(self, form):
@@ -1058,8 +1087,8 @@ class EmailComposeView(PluginActiveMixin, EventPermissionRequiredMixin, FormView
         )
 
 
-class EmailOutboxView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class EmailOutboxView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/emails/outbox_list.html"
 
     def get_context_data(self, **kwargs):
@@ -1073,11 +1102,12 @@ class EmailOutboxView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
                 .order_by("-created")
             )
         ctx["mails"] = queues
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
         return ctx
 
 
-class EmailSentView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class EmailSentView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/emails/sent_list.html"
 
     def get_context_data(self, **kwargs):
@@ -1091,11 +1121,12 @@ class EmailSentView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateVie
                 .order_by("-sent_at")
             )
         ctx["mails"] = queues
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
         return ctx
 
 
-class EmailQueueEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailQueueEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/emails/outbox_form.html"
 
     def _get_queue(self):
@@ -1110,7 +1141,11 @@ class EmailQueueEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     def get(self, request, *args, **kwargs):
         queue = self._get_queue()
         form = EmailQueueEditForm(instance=queue, event=request.event)
-        return render(request, self.template_name, {"form": form, "queue": queue})
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "queue": queue, "can_view_email": can_view_email_addresses(request.user, request.organizer, request.event, request=request)},
+        )
 
     def post(self, request, *args, **kwargs):
         queue = self._get_queue()
@@ -1139,11 +1174,15 @@ class EmailQueueEditView(PluginActiveMixin, EventPermissionRequiredMixin, View):
                 organizer=request.organizer.slug,
                 event=request.event.slug,
             )
-        return render(request, self.template_name, {"form": form, "queue": queue})
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "queue": queue, "can_view_email": can_view_email_addresses(request.user, request.organizer, request.event, request=request)},
+        )
 
 
-class EmailQueueDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailQueueDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/emails/delete_confirmation.html"
 
     def _get_queue(self):
@@ -1173,8 +1212,8 @@ class EmailQueueDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View
         )
 
 
-class EmailQueueSendNowView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class EmailQueueSendNowView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -1194,8 +1233,8 @@ class EmailQueueSendNowView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         )
 
 
-class ShiftLocationListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftLocationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/locations.html"
 
     def get(self, request, *args, **kwargs):
@@ -1204,8 +1243,8 @@ class ShiftLocationListView(PluginActiveMixin, EventPermissionRequiredMixin, Vie
         return render(request, self.template_name, {"locations": locations})
 
 
-class ShiftLocationCreateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftLocationCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/location_edit.html"
 
     def get(self, request, *args, **kwargs):
@@ -1224,8 +1263,8 @@ class ShiftLocationCreateView(PluginActiveMixin, EventPermissionRequiredMixin, V
         return render(request, self.template_name, {"form": form})
 
 
-class ShiftLocationUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftLocationUpdateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/location_edit.html"
 
     def get(self, request, *args, **kwargs):
@@ -1248,8 +1287,8 @@ class ShiftLocationUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, V
         return render(request, self.template_name, {"form": form, "location": location})
 
 
-class ShiftLocationDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftLocationDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/location_delete.html"
 
     def get(self, request, *args, **kwargs):
@@ -1269,8 +1308,8 @@ class ShiftLocationDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, V
         return redirect("plugins:teamshifts:locations", organizer=request.organizer.slug, event=request.event.slug)
 
 
-class ShiftListView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ShiftListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shifts.html"
 
     def get_context_data(self, **kwargs):
@@ -1281,8 +1320,8 @@ class ShiftListView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateVie
         return ctx
 
 
-class ShiftCreateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ShiftCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shift_create.html"
 
     def get_context_data(self, **kwargs):
@@ -1369,8 +1408,8 @@ class ShiftCreateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
         return self.render_to_response(ctx)
 
 
-class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ShiftUpdateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shift_edit.html"
 
     def dispatch(self, request, *args, **kwargs):
@@ -1420,9 +1459,9 @@ class ShiftUpdateView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateV
             return self.render_to_response(ctx)
 
 
-class ShiftDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, DeleteView):
+class ShiftDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, DeleteView):
     model = Shift
-    permission = "can_change_event_settings"
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shift_delete.html"
     context_object_name = "shift"
 
@@ -1443,8 +1482,8 @@ class ShiftDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, DeleteVie
         return super().delete(request, *args, **kwargs)
 
 
-class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, PaginationMixin, ListView):
-    permission = "can_change_event_settings"
+class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, PaginationMixin, ListView):
+    permission = None
     template_name = "teamshifts/members.html"
     context_object_name = "members"
 
@@ -1454,25 +1493,8 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
             qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
 
             search = self.request.GET.get("q", "").strip()
-
             if search:
-                can_view_email = False
-                try:
-                    can_view_email = self.request.user.has_event_permission(
-                        self.request.organizer,
-                        event,
-                        "can_teamshifts_view_email_addresses",
-                        request=self.request,
-                    )
-                except ValueError:
-                    pass
-                if not can_view_email:
-                    can_view_email = self.request.user.has_event_permission(
-                        self.request.organizer,
-                        event,
-                        "can_view_orders",
-                        request=self.request,
-                    )
+                can_view_email = can_view_email_addresses(self.request.user, self.request.organizer, event, request=self.request)
                 if can_view_email:
                     qs = qs.filter(Q(user__email__icontains=search) | Q(user__fullname__icontains=search))
                 else:
@@ -1507,22 +1529,13 @@ class MembersListView(PluginActiveMixin, EventPermissionRequiredMixin, Paginatio
         with scope(event=event):
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
 
-        can_view_email = False
-        try:
-            if self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_teamshifts_view_email_addresses", request=self.request):
-                can_view_email = True
-        except ValueError:
-            pass
-
-        if not can_view_email and self.request.user.has_event_permission(self.request.organizer, self.request.event, "can_view_orders", request=self.request):
-            can_view_email = True
-
-        ctx["can_view_email"] = can_view_email
+        ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
+        return ctx
         return ctx
 
 
-class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def post(self, request, *args, **kwargs):
         event = request.event
@@ -1533,8 +1546,8 @@ class MemberArrivedToggleView(PluginActiveMixin, EventPermissionRequiredMixin, V
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
-class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CustomEmailTemplateCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/custom_email_template_form.html"
 
     def get(self, request, *args, **kwargs):
@@ -1557,8 +1570,8 @@ class CustomEmailTemplateCreateView(PluginActiveMixin, EventPermissionRequiredMi
         return render(request, self.template_name, {"form": form})
 
 
-class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class CustomEmailTemplateDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_send_emails"
     template_name = "teamshifts/custom_email_template_delete.html"
 
     def _get_template(self, request, pk):
@@ -1581,8 +1594,8 @@ class CustomEmailTemplateDeleteView(PluginActiveMixin, EventPermissionRequiredMi
         )
 
 
-class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleTalksAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         event = request.event
@@ -1699,8 +1712,8 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, EventPermissionRequiredMixin,
             return JsonResponse({"id": shift.id})
 
 
-class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def patch(self, request, *args, **kwargs):
         try:
@@ -1779,22 +1792,27 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, EventPermissionRequiredMixin, 
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleMembersAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         event = request.event
+        show_email = can_view_email_addresses(request.user, request.organizer, event, request=request)
         with scope(event=event):
             apps = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
             members = []
             for app in apps:
                 if app.user:
-                    members.append({"id": app.user.id, "name": app.user.get_full_name() or app.user.email, "email": app.user.email})
+                    name = app.user.get_full_name() or app.user.email
+                    member = {"id": app.user.id, "name": name}
+                    if show_email:
+                        member["email"] = app.user.email
+                    members.append(member)
             return JsonResponse({"members": members})
 
 
-class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def post(self, request, *args, **kwargs):
         try:
@@ -1845,23 +1863,23 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, EventPermissionRequired
             return JsonResponse({"status": "ok"})
 
 
-class ShiftScheduleAvailabilitiesAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleAvailabilitiesAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         return JsonResponse({"rooms": {}, "talks": {}})
 
 
-class ShiftScheduleWarningsAPIView(PluginActiveMixin, EventPermissionRequiredMixin, View):
-    permission = "can_change_event_settings"
+class ShiftScheduleWarningsAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
 
     def get(self, request, *args, **kwargs):
         return JsonResponse({})
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
-class ShiftScheduleGridEditorView(PluginActiveMixin, EventPermissionRequiredMixin, TemplateView):
-    permission = "can_change_event_settings"
+class ShiftScheduleGridEditorView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+    permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/schedule_grid.html"
 
     def get_context_data(self, **kwargs):

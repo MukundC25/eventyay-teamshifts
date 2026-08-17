@@ -59,7 +59,7 @@
         {% if preview_recipients %}
           <ul>
             {% for user in preview_recipients|slice:':20' %}
-              <li>{{ user.email }}{% if user.fullname %} ({{ user.fullname }}){% endif %}</li>
+              <li>{% if can_view_email %}{{ user.email }}{% endif %}{% if user.fullname %}{% if can_view_email %} ({% endif %}{{ user.fullname }}{% if can_view_email %}){% endif %}{% endif %}</li>
             {% endfor %}
             {% if preview_recipients|length > 20 %}
               <li>{% blocktrans with count=preview_recipients|length|add:'-20' %}and {{ count }} more{% endblocktrans %}</li>
