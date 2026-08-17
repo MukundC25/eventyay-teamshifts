@@ -33,6 +33,11 @@ urlpatterns = [
         name="cfm_description_preview",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/richtext-preview/",
+        views.RichTextPreviewView.as_view(),
+        name="richtext_preview",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/settings/application-form/",
         views.CFMApplicationFormView.as_view(),
         name="cfm_application_form",

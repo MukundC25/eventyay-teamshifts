@@ -242,6 +242,14 @@ class CFMDescriptionPreviewView(PluginActiveMixin, EventPermissionRequiredMixin,
         return JsonResponse({"msgs": msgs})
 
 
+class RichTextPreviewView(PluginActiveMixin, EventPermissionRequiredMixin, View):
+    permission = "can_change_event_settings"
+
+    def post(self, request, *args, **kwargs):
+        html = request.POST.get("content", "")
+        return JsonResponse({"html": str(rich_text(html)) if html else ""})
+
+
 class TeamRoleListView(PluginActiveMixin, EventPermissionRequiredMixin, View):
     permission = "can_change_event_settings"
     template_name = "teamshifts/roles.html"
