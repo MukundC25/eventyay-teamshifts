@@ -4,100 +4,116 @@
 {% load static %}
 
 {% block custom_header %}
-    {{ block.super }}
-    <script type="module" src="{% static 'teamshifts/shift_edit.js' %}"></script>
+  {{ block.super }}
+  <script type='module' src='{% static "teamshifts/shift_edit.js" %}'></script>
 {% endblock %}
 
 {% block content %}
-    <h1>{% trans "Edit Shift" %}</h1>
-    
-    {% if not has_locations %}
-        <div class="alert alert-warning">
-            {% trans "No locations defined yet, add locations first." %}
-            <br>
-            <a href="{% url 'plugins:teamshifts:location_create' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-warning" style="margin-top: 10px;">
-                {% trans "Add Location" %}
-            </a>
-        </div>
-    {% endif %}
-    
-    <form method="post" action="" class="form-horizontal">
-        {% csrf_token %}
-        <input type="hidden" name="mode" value="single">
-        
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                <h3 class="panel-title">{% trans "Shift Details" %}</h3>
-            </div>
-            <div class="panel-body">
-                {% bootstrap_field form.name layout="horizontal" %}
-                {% bootstrap_field form.location layout="horizontal" %}
-                {% bootstrap_field form.start_time layout="horizontal" %}
-                {% bootstrap_field form.end_time layout="horizontal" %}
-                {% bootstrap_field form.description layout="horizontal" %}
-            </div>
-        </div>
+  <h1>{% trans "Edit Shift" %}</h1>
 
-        <div class="panel panel-default">
-            <div class="panel-heading">
-                <h3 class="panel-title">{% trans "Roles Needed" %}</h3>
-            </div>
-            <div class="panel-body">
-                {{ formset.management_form }}
-                {% if formset.non_form_errors %}
-                    <div class="alert alert-danger">
-                        {{ formset.non_form_errors|striptags }}
-                    </div>
-                {% endif %}
-                <table class="table table-striped" id="roles-table">
-                    <thead>
-                        <tr>
-                            <th>{% trans "Role" %}</th>
-                            <th>{% trans "Capacity" %}</th>
-                            <th>{% trans "Remove" %}</th>
-                        </tr>
-                    </thead>
-                    <tbody id="roles-body">
-                        {% for form in formset %}
-                            <tr class="role-form-row">
-                                <td class="{% if form.role.errors %}has-error{% endif %}">
-                                    {{ form.id }}
-                                    {{ form.role }}
-                                    {% if form.role.errors %}
-                                        <div class="help-block">{{ form.role.errors|striptags }}</div>
-                                    {% endif %}
-                                    {% if form.non_field_errors %}
-                                        <div class="help-block text-danger">{{ form.non_field_errors|striptags }}</div>
-                                    {% endif %}
-                                </td>
-                                <td class="{% if form.capacity.errors %}has-error{% endif %}">
-                                    {{ form.capacity }}
-                                    {% if form.capacity.errors %}
-                                        <div class="help-block">{{ form.capacity.errors|striptags }}</div>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <button type="button" class="btn btn-danger btn-sm remove-role-btn"><i class="fa fa-trash"></i></button>
-                                    <span class="delete-checkbox">{{ form.DELETE }}</span>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <button type="button" class="btn btn-success" id="add-role-btn">
-                    <i class="fa fa-plus"></i> {% trans "Add Role" %}
-                </button>
-            </div>
-        </div>
-        
-        <div class="form-group submit-group">
-            <button type="submit" class="btn btn-primary btn-save">
-                {% trans "Save" %}
-            </button>
-            <a href="{% url 'plugins:teamshifts:shifts' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-default">
-                {% trans "Cancel" %}
-            </a>
-        </div>
-    </form>
+  {% if not has_locations %}
+    <div class='alert alert-warning'>
+      {% trans "No locations defined yet, add locations first." %}
+      <br>
+      <a href='{% url "plugins:teamshifts:location_create" organizer=request.event.organizer.slug event=request.event.slug %}' class='btn btn-warning' style='margin-top:10px;'>
+        {% trans "Add Location" %}
+      </a>
+    </div>
+  {% endif %}
 
+  <form method='post' action='' class='form-horizontal'>
+    {% csrf_token %}
+    <input type='hidden' name='mode' value='single'>
+
+    <div class='panel panel-default'>
+      <div class='panel-heading'>
+        <h3 class='panel-title'>{% trans "Shift Details" %}</h3>
+      </div>
+      <div class='panel-body'>
+        {% bootstrap_field form.name layout='horizontal' %}
+        {% bootstrap_field form.location layout='horizontal' %}
+        {% bootstrap_field form.start_time layout='horizontal' %}
+        {% bootstrap_field form.end_time layout='horizontal' %}
+
+        <div class='form-group'
+             data-richtext-preview-wrapper
+             data-richtext-preview-url='{% url "plugins:teamshifts:richtext_preview" organizer=request.organizer.slug event=request.event.slug %}'>
+          <label class='col-md-3 control-label'>{{ form.description.label }}</label>
+          <div class='col-md-9'>
+            <ul class='nav nav-tabs' role='tablist'>
+              <li role='presentation' class='active'>
+                <a data-toggle='tab' href='#shift_description_edit'>
+                  <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                </a>
+              </li>
+              <li role='presentation'>
+                <a data-toggle='tab' href='#shift_description_preview' data-richtext-preview-tab>
+                  <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                </a>
+              </li>
+            </ul>
+            <div class='tab-content'>
+              <div id='shift_description_edit' class='tab-pane fade in active'>
+                {% bootstrap_field form.description show_label=False form_group_class='' %}
+              </div>
+              <div id='shift_description_preview' class='tab-pane'>
+                <div class='richtext-preview well' style='min-height:80px;'></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class='panel panel-default'>
+      <div class='panel-heading'>
+        <h3 class='panel-title'>{% trans "Roles Needed" %}</h3>
+      </div>
+      <div class='panel-body'>
+        {{ formset.management_form }}
+        {% if formset.non_form_errors %}
+          <div class='alert alert-danger'>{{ formset.non_form_errors|striptags }}</div>
+        {% endif %}
+        <table class='table table-striped' id='roles-table'>
+          <thead>
+            <tr>
+              <th>{% trans "Role" %}</th>
+              <th>{% trans "Capacity" %}</th>
+              <th>{% trans "Remove" %}</th>
+            </tr>
+          </thead>
+          <tbody id='roles-body'>
+            {% for form in formset %}
+              <tr class='role-form-row'>
+                <td class='{% if form.role.errors %}has-error{% endif %}'>
+                  {{ form.id }}
+                  {{ form.role }}
+                  {% if form.role.errors %}<div class='help-block'>{{ form.role.errors|striptags }}</div>{% endif %}
+                  {% if form.non_field_errors %}<div class='help-block text-danger'>{{ form.non_field_errors|striptags }}</div>{% endif %}
+                </td>
+                <td class='{% if form.capacity.errors %}has-error{% endif %}'>
+                  {{ form.capacity }}
+                  {% if form.capacity.errors %}<div class='help-block'>{{ form.capacity.errors|striptags }}</div>{% endif %}
+                </td>
+                <td>
+                  <button type='button' class='btn btn-danger btn-sm remove-role-btn'><i class='fa fa-trash'></i></button>
+                  <span class='delete-checkbox'>{{ form.DELETE }}</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type='button' class='btn btn-success' id='add-role-btn'>
+          <i class='fa fa-plus'></i> {% trans "Add Role" %}
+        </button>
+      </div>
+    </div>
+
+    <div class='form-group submit-group'>
+      <button type='submit' class='btn btn-primary btn-save'>{% trans "Save" %}</button>
+      <a href='{% url "plugins:teamshifts:shifts" organizer=request.event.organizer.slug event=request.event.slug %}' class='btn btn-default'>
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
 {% endblock %}

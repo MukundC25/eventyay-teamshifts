@@ -5,87 +5,113 @@
 {% block title %}{% trans "Team Roles" %} :: {{ request.event.name }}{% endblock %}
 
 {% block content %}
-    <nav id='event-nav' class='header-nav'>
-        <div class='navigation'>
-            <div class='navigation-title'>
-                <h1>{% trans "Team Roles" %}</h1>
-            </div>
-        </div>
-    </nav>
-
-    {% if not roles %}
-        <div class='empty-collection'>
-            <p>{% blocktrans trimmed %}No roles have been defined for this event yet.{% endblocktrans %}</p>
-        </div>
-    {% else %}
-        <div class='table-responsive'>
-            <table class='table table-hover table-quotas'>
-                <thead>
-                    <tr>
-                        <th>{% trans "Role name" %}</th>
-                        <th>{% trans "Status" %}</th>
-                        <th>{% trans "Description" %}</th>
-                        <th>{% trans "Applications" %}</th>
-                        <th class='action-col-2'></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for role in roles %}
-                        <tr>
-                            <td><strong>{{ role.name }}</strong></td>
-                            <td>
-                                {% if role.is_restricted %}
-                                    <span class="label label-warning">{% trans "Restricted" %}</span>
-                                {% else %}
-                                    <span class="label label-success">{% trans "Open" %}</span>
-                                {% endif %}
-                            </td>
-                            <td class='text-muted'>{{ role.description|default:"—" }}</td>
-                            <td></td>
-                            <td class='text-right flip'>
-                                {% if allowed_role_ids is None or role.pk in allowed_role_ids %}
-                                <a href='{% url "plugins:teamshifts:role_edit" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
-                                   class='btn btn-default btn-sm'>
-                                    <span class='fa fa-edit'></span>
-                                </a>
-                                <form action='{% url "plugins:teamshifts:role_delete" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
-                                      method='post'
-                                      class='helper-display-inline'>
-                                    {% csrf_token %}
-                                    <button type='submit'
-                                            class='btn btn-delete btn-danger btn-sm'
-                                            data-confirm='{% blocktrans trimmed with name=role.name %}Delete role "{{ name }}"?{% endblocktrans %}'>
-                                        <span class='fa fa-trash'></span>
-                                    </button>
-                                </form>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% endif %}
-
-    {% if can_create_roles %}
-    <div class='panel panel-default'>
-        <div class='panel-heading'>
-            <h3 class='panel-title'>{% trans "Add a new role" %}</h3>
-        </div>
-        <div class='panel-body'>
-            <form action='' method='post' class='form-horizontal'>
-                {% csrf_token %}
-                {% bootstrap_form_errors form %}
-                {% bootstrap_field form.name layout="control" %}
-                {% bootstrap_field form.is_restricted layout="control" %}
-                {% bootstrap_field form.description layout="control" %}
-                <div class='form-group submit-group'>
-                    <button type='submit' class='btn btn-primary btn-save'>
-                        <span class='fa fa-plus'></span> {% trans "Add role" %}
-                    </button>
-                </div>
-            </form>
-        </div>
+  <nav id='event-nav' class='header-nav'>
+    <div class='navigation'>
+      <div class='navigation-title'>
+        <h1>{% trans "Team Roles" %}</h1>
+      </div>
     </div>
-    {% endif %}
+  </nav>
+
+  {% if not roles %}
+    <div class='empty-collection'>
+      <p>{% blocktrans trimmed %}No roles have been defined for this event yet.{% endblocktrans %}</p>
+    </div>
+  {% else %}
+    <div class='table-responsive'>
+      <table class='table table-hover table-quotas'>
+        <thead>
+          <tr>
+            <th>{% trans "Role name" %}</th>
+            <th>{% trans "Status" %}</th>
+            <th>{% trans "Description" %}</th>
+            <th>{% trans "Applications" %}</th>
+            <th class='action-col-2'></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for role in roles %}
+            <tr>
+              <td><strong>{{ role.name }}</strong></td>
+              <td>
+                {% if role.is_restricted %}
+                  <span class='label label-warning'>{% trans "Restricted" %}</span>
+                {% else %}
+                  <span class='label label-success'>{% trans "Open" %}</span>
+                {% endif %}
+              </td>
+              <td class='text-muted'>{{ role.description|default:"—" }}</td>
+              <td></td>
+              <td class='text-right flip'>
+                <a href='{% url "plugins:teamshifts:role_edit" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
+                   class='btn btn-default btn-sm'>
+                  <span class='fa fa-edit'></span>
+                </a>
+                <form action='{% url "plugins:teamshifts:role_delete" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
+                      method='post'
+                      class='helper-display-inline'>
+                  {% csrf_token %}
+                  <button type='submit'
+                          class='btn btn-delete btn-danger btn-sm'
+                          data-confirm='{% blocktrans trimmed with name=role.name %}Delete role "{{ name }}"?{% endblocktrans %}'>
+                    <span class='fa fa-trash'></span>
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if can_create_roles %}
+  <div class='panel panel-default'>
+    <div class='panel-heading'>
+      <h3 class='panel-title'>{% trans "Add a new role" %}</h3>
+    </div>
+    <div class='panel-body'>
+      <form action='' method='post' class='form-horizontal'>
+        {% csrf_token %}
+        {% bootstrap_form_errors form %}
+        {% bootstrap_field form.name layout='control' %}
+        {% bootstrap_field form.is_restricted layout='control' %}
+
+        <div class='form-group'
+             data-richtext-preview-wrapper
+             data-richtext-preview-url='{% url "plugins:teamshifts:richtext_preview" organizer=request.organizer.slug event=request.event.slug %}'>
+          <label class='col-md-3 control-label'>{{ form.description.label }}</label>
+          <div class='col-md-9'>
+            <ul class='nav nav-tabs' role='tablist'>
+              <li role='presentation' class='active'>
+                <a data-toggle='tab' href='#new_role_description_edit'>
+                  <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                </a>
+              </li>
+              <li role='presentation'>
+                <a data-toggle='tab' href='#new_role_description_preview' data-richtext-preview-tab>
+                  <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                </a>
+              </li>
+            </ul>
+            <div class='tab-content'>
+              <div id='new_role_description_edit' class='tab-pane fade in active'>
+                {% bootstrap_field form.description show_label=False form_group_class='' %}
+              </div>
+              <div id='new_role_description_preview' class='tab-pane'>
+                <div class='richtext-preview well' style='min-height:80px;'></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class='form-group submit-group'>
+          <button type='submit' class='btn btn-primary btn-save'>
+            <span class='fa fa-plus'></span> {% trans "Add role" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 {% endblock %}

@@ -6,8 +6,9 @@ from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
 from django_scopes.forms import SafeModelChoiceField
+from eventyay.common.forms.widgets import I18nEmailEditorWidget, RichTextWidget
 from eventyay.control.forms import SplitDateTimeField, SplitDateTimePickerWidget
-from i18nfield.forms import I18nFormField, I18nTextarea, I18nTextInput
+from i18nfield.forms import I18nFormField, I18nTextInput
 
 from .models import (
     CFM_BUILTIN_FIELD_KEYS,
@@ -35,6 +36,9 @@ def format_datetime_local(dt):
     return f"{dt:%Y-%m-%dT%H:%M}"
 
 
+EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name"]
+
+
 class CallForTeamMembersSettingsForm(forms.ModelForm):
     class Meta:
         model = CallForTeamMembers
@@ -58,6 +62,11 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
         self._event = kwargs.pop("event", None)
         super().__init__(*args, **kwargs)
         if locales:
+            self.fields["description"].widget = I18nEmailEditorWidget(
+                locales=locales,
+                field=self.fields["description"],
+                attrs={"data-tiptap-profile": "richtext"},
+            )
             self.fields["description"].widget.enabled_locales = locales
         if self._event:
             self.fields["deadline"].help_text = get_tz_help(self._event)
@@ -81,7 +90,7 @@ class TeamRoleForm(forms.ModelForm):
         fields = ("name", "description", "is_restricted")
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
-            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "description": RichTextWidget(attrs={"class": "form-control", "rows": 3}),
         }
 
     def clean(self):
@@ -353,7 +362,11 @@ class EmailTemplateForm(forms.ModelForm):
         self.fields["body"].required = False
         if locales:
             self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
-            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
+            self.fields["body"].widget = I18nEmailEditorWidget(
+                locales=locales,
+                field=self.fields["body"],
+                placeholders=EMAIL_PLACEHOLDERS,
+            )
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
 
@@ -372,7 +385,11 @@ class CustomEmailTemplateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
-            self.fields["body"].widget = I18nTextarea(locales=locales, field=self.fields["body"])
+            self.fields["body"].widget = I18nEmailEditorWidget(
+                locales=locales,
+                field=self.fields["body"],
+                placeholders=EMAIL_PLACEHOLDERS,
+            )
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
 
@@ -391,10 +408,13 @@ class EmailComposeForm(forms.Form):
         )
         self.fields["message"] = I18nFormField(
             label=_("Message"),
-            widget=I18nTextarea,
+            widget=I18nEmailEditorWidget,
             required=True,
             locales=locales,
-            widget_kwargs={"attrs": {"rows": 10}},
+            widget_kwargs={
+                "attrs": {"rows": 10},
+                "placeholders": EMAIL_PLACEHOLDERS,
+            },
         )
 
         self.fields["status"] = forms.ChoiceField(
@@ -439,6 +459,11 @@ class EmailQueueEditForm(forms.ModelForm):
         self._event = event
         if event is not None:
             locales = list(event.settings.get("locales") or [event.settings.locale])
+            self.fields["message"].widget = I18nEmailEditorWidget(
+                locales=locales,
+                field=self.fields["message"],
+                placeholders=EMAIL_PLACEHOLDERS,
+            )
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
             self.fields["send_after"].help_text = get_tz_help(event)
@@ -478,7 +503,7 @@ class ShiftLocationForm(forms.ModelForm):
         fields = ("name", "description")
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
-            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "description": RichTextWidget(attrs={"class": "form-control", "rows": 3}),
         }
 
     def clean(self):
@@ -519,7 +544,7 @@ class ShiftForm(forms.ModelForm):
             "end_time": forms.DateTimeInput(attrs={"type": "datetime-local", "class": "form-control"}, format="%Y-%m-%dT%H:%M"),
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "location": forms.Select(attrs={"class": "form-control"}),
-            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "description": RichTextWidget(attrs={"class": "form-control", "rows": 3}),
         }
         help_texts = {}
 

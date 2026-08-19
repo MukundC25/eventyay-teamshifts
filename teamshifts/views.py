@@ -243,6 +243,14 @@ class CFMDescriptionPreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredM
         return JsonResponse({"msgs": msgs})
 
 
+class RichTextPreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = None
+
+    def post(self, request, *args, **kwargs):
+        html = request.POST.get("content", "")
+        return JsonResponse({"html": str(rich_text(html)) if html else ""})
+
+
 class TeamRoleListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
     permission = None
     template_name = "teamshifts/roles.html"
@@ -479,7 +487,7 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
         body_values = request.POST.getlist("body")
         previews = {}
         for i, locale in enumerate(event_locales):
-            text = body_values[i] if i < len(body_values) else ""
+            text = request.POST.get(f"body_{locale}") or (body_values[i] if i < len(body_values) else "")
             with language(locale, region):
                 previews[locale] = render_with_placeholders(text)
 
