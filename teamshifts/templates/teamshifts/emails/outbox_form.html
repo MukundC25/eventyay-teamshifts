@@ -6,7 +6,6 @@
 {% block custom_header %}
   {{ block.super }}
   <script type='module' src='{% static "teamshifts/schedule_datetime.js" %}'></script>
-  <script type='module' src='{% static "teamshifts/richtext_preview.js" %}'></script>
 {% endblock %}
 
 {% block title %}{% trans "Edit email" %} :: {{ request.event.name }}{% endblock %}

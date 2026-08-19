@@ -1,14 +1,8 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
-{% load static %}
 
 {% block title %}{% trans "Team Roles" %} :: {{ request.event.name }}{% endblock %}
-
-{% block custom_header %}
-  {{ block.super }}
-  <script type='module' src='{% static "teamshifts/richtext_preview.js" %}'></script>
-{% endblock %}
 
 {% block content %}
   <nav id='event-nav' class='header-nav'>
@@ -71,6 +65,7 @@
     </div>
   {% endif %}
 
+  {% if can_create_roles %}
   <div class='panel panel-default'>
     <div class='panel-heading'>
       <h3 class='panel-title'>{% trans "Add a new role" %}</h3>
@@ -118,4 +113,5 @@
       </form>
     </div>
   </div>
+  {% endif %}
 {% endblock %}

@@ -1,15 +1,9 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
-{% load static %}
 
 {% block title %}
   {% if location %}{% trans "Edit Location" %}{% else %}{% trans "Add Location" %}{% endif %}
-{% endblock %}
-
-{% block custom_header %}
-  {{ block.super }}
-  <script type='module' src='{% static "teamshifts/richtext_preview.js" %}'></script>
 {% endblock %}
 
 {% block content %}

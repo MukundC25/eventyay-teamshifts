@@ -36,6 +36,9 @@ def format_datetime_local(dt):
     return f"{dt:%Y-%m-%dT%H:%M}"
 
 
+EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name"]
+
+
 class CallForTeamMembersSettingsForm(forms.ModelForm):
     class Meta:
         model = CallForTeamMembers
@@ -353,8 +356,6 @@ class EmailTemplateForm(forms.ModelForm):
             "body": _("Body"),
         }
 
-    PLACEHOLDERS = ["full_name", "event_name", "role_name"]
-
     def __init__(self, *args, locales=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["subject"].required = False
@@ -364,7 +365,7 @@ class EmailTemplateForm(forms.ModelForm):
             self.fields["body"].widget = I18nEmailEditorWidget(
                 locales=locales,
                 field=self.fields["body"],
-                placeholders=self.PLACEHOLDERS,
+                placeholders=EMAIL_PLACEHOLDERS,
             )
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
@@ -380,8 +381,6 @@ class CustomEmailTemplateForm(forms.ModelForm):
             "name": forms.TextInput(attrs={"class": "form-control"}),
         }
 
-    PLACEHOLDERS = ["full_name", "event_name", "role_name"]
-
     def __init__(self, *args, locales=None, **kwargs):
         super().__init__(*args, **kwargs)
         if locales:
@@ -389,15 +388,13 @@ class CustomEmailTemplateForm(forms.ModelForm):
             self.fields["body"].widget = I18nEmailEditorWidget(
                 locales=locales,
                 field=self.fields["body"],
-                placeholders=self.PLACEHOLDERS,
+                placeholders=EMAIL_PLACEHOLDERS,
             )
             for field_name in ("subject", "body"):
                 self.fields[field_name].widget.enabled_locales = locales
 
 
 class EmailComposeForm(forms.Form):
-    PLACEHOLDERS = ["full_name", "event_name", "role_name"]
-
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._event = event
@@ -416,7 +413,7 @@ class EmailComposeForm(forms.Form):
             locales=locales,
             widget_kwargs={
                 "attrs": {"rows": 10},
-                "placeholders": self.PLACEHOLDERS,
+                "placeholders": EMAIL_PLACEHOLDERS,
             },
         )
 
@@ -446,8 +443,6 @@ class EmailComposeForm(forms.Form):
 
 
 class EmailQueueEditForm(forms.ModelForm):
-    PLACEHOLDERS = ["full_name", "event_name", "role_name"]
-
     class Meta:
         model = TeamShiftsEmailQueue
         fields = ("subject", "message", "send_after")
@@ -467,10 +462,11 @@ class EmailQueueEditForm(forms.ModelForm):
             self.fields["message"].widget = I18nEmailEditorWidget(
                 locales=locales,
                 field=self.fields["message"],
-                placeholders=self.PLACEHOLDERS,
+                placeholders=EMAIL_PLACEHOLDERS,
             )
             for field_name in ("subject", "message"):
                 self.fields[field_name].widget.enabled_locales = locales
+            self.fields["send_after"].help_text = get_tz_help(event)
             self.fields["send_after"].widget.attrs.update(
                 {
                     "data-schedule-datetime": "1",
