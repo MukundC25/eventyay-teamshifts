@@ -5,36 +5,64 @@
 {% block title %}{% trans "Edit Role" %} :: {{ request.event.name }}{% endblock %}
 
 {% block content %}
-    <nav id='event-nav' class='header-nav'>
-        <div class='navigation'>
-            <div class='navigation-title'>
-                <h1>{% blocktrans trimmed with name=role.name %}Edit Role "{{ name }}"{% endblocktrans %}</h1>
-            </div>
-            <div class='navigation-action'>
-                <a href='{% url "plugins:teamshifts:roles" organizer=request.organizer.slug event=request.event.slug %}' class='btn btn-default'>
-                    {% trans "Back" %}
-                </a>
-            </div>
-        </div>
-    </nav>
-
-    <div class='panel panel-default'>
-        <div class='panel-heading'>
-            <h3 class='panel-title'>{% trans "Role details" %}</h3>
-        </div>
-        <div class='panel-body'>
-            <form action='' method='post' class='form-horizontal'>
-                {% csrf_token %}
-                {% bootstrap_form_errors form %}
-                {% bootstrap_field form.name layout="control" %}
-                {% bootstrap_field form.is_restricted layout="control" %}
-                {% bootstrap_field form.description layout="control" %}
-                <div class='form-group submit-group'>
-                    <button type='submit' class='btn btn-primary btn-save'>
-                        <span class='fa fa-save'></span> {% trans "Save" %}
-                    </button>
-                </div>
-            </form>
-        </div>
+  <nav id='event-nav' class='header-nav'>
+    <div class='navigation'>
+      <div class='navigation-title'>
+        <h1>{% blocktrans trimmed with name=role.name %}Edit Role "{{ name }}"{% endblocktrans %}</h1>
+      </div>
+      <div class='navigation-action'>
+        <a href='{% url "plugins:teamshifts:roles" organizer=request.organizer.slug event=request.event.slug %}' class='btn btn-default'>
+          {% trans "Back" %}
+        </a>
+      </div>
     </div>
+  </nav>
+
+  <div class='panel panel-default'>
+    <div class='panel-heading'>
+      <h3 class='panel-title'>{% trans "Role details" %}</h3>
+    </div>
+    <div class='panel-body'>
+      <form action='' method='post' class='form-horizontal'>
+        {% csrf_token %}
+        {% bootstrap_form_errors form %}
+        {% bootstrap_field form.name layout='control' %}
+        {% bootstrap_field form.is_restricted layout='control' %}
+
+        <div class='form-group'
+             data-richtext-preview-wrapper
+             data-richtext-preview-url='{% url "plugins:teamshifts:richtext_preview" organizer=request.organizer.slug event=request.event.slug %}'>
+          <label class='col-md-3 control-label'>{{ form.description.label }}</label>
+          <div class='col-md-9'>
+            <ul class='nav nav-tabs' role='tablist'>
+              <li role='presentation' class='active'>
+                <a data-toggle='tab' href='#description_edit'>
+                  <i class='fa fa-pencil-square-o fa-fw'></i> {% trans "Edit" %}
+                </a>
+              </li>
+              <li role='presentation'>
+                <a data-toggle='tab' href='#description_preview' data-richtext-preview-tab>
+                  <i class='fa fa-tv fa-fw'></i> {% trans "Preview" %}
+                </a>
+              </li>
+            </ul>
+            <div class='tab-content'>
+              <div id='description_edit' class='tab-pane fade in active'>
+                {% bootstrap_field form.description show_label=False form_group_class='' %}
+              </div>
+              <div id='description_preview' class='tab-pane'>
+                <div class='richtext-preview well' style='min-height:80px;'></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class='form-group submit-group'>
+          <button type='submit' class='btn btn-primary btn-save'>
+            <span class='fa fa-save'></span> {% trans "Save" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 {% endblock %}
