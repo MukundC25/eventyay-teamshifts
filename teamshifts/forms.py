@@ -65,6 +65,12 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             if not self.initial.get("deadline"):
                 self.initial["deadline"] = get_event_local_now(self._event)
 
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("active") or cleaned.get("cfm_private"):
+            cleaned["show_on_menu"] = False
+        return cleaned
+
 
 class CallForTeamMembersApplicationSettingsForm(forms.ModelForm):
     class Meta:

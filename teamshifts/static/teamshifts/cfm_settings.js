@@ -74,12 +74,21 @@ function initDescriptionPreview() {
 document.addEventListener('DOMContentLoaded', function () {
   initDescriptionPreview();
   initSecretLinkCopy();
+  initCallVisibilityToggles();
+});
+
+function initCallVisibilityToggles() {
   var activeEl = document.getElementById('id_active');
   var showOnMenuEl = document.getElementById('id_show_on_menu');
+  var privateEl = document.getElementById('id_cfm_private');
   if (!activeEl || !showOnMenuEl) return;
+
   function updateShowOnMenu() {
     var row = showOnMenuEl.closest('.form-group') || showOnMenuEl.parentElement;
-    if (!activeEl.checked) {
+    // Nav advertise only makes sense for an active, public call.
+    // Private mode is invite-only via secret link, so force menu off.
+    var canShowOnMenu = activeEl.checked && !(privateEl && privateEl.checked);
+    if (!canShowOnMenu) {
       showOnMenuEl.disabled = true;
       showOnMenuEl.checked = false;
       if (row) row.style.opacity = '0.5';
@@ -88,9 +97,11 @@ document.addEventListener('DOMContentLoaded', function () {
       if (row) row.style.opacity = '';
     }
   }
+
   activeEl.addEventListener('change', updateShowOnMenu);
+  if (privateEl) privateEl.addEventListener('change', updateShowOnMenu);
   updateShowOnMenu();
-});
+}
 
 function initSecretLinkCopy() {
   var button = document.getElementById('cfm-copy-secret-link');
