@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import timedelta
 
@@ -64,6 +65,8 @@ from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
 from .tasks import send_queued_email
+
+logger = logging.getLogger(__name__)
 
 
 class PluginActiveMixin:
@@ -1904,27 +1907,35 @@ def _get_accepted_application(request, event):
         return TeamMemberApplication.objects.filter(event=event, user=request.user, status=ApplicationStatus.ACCEPTED).first()
 
 
+def _public_person_label(user, fallback):
+    if not user:
+        return fallback
+    name = (user.get_full_name() or "").strip()
+    return name or fallback
+
+
 def _shift_roles_payload(shift):
+    grouped = {}
+    for assignment in shift.assignments.all():
+        if not assignment.team_member_id or not assignment.role_id:
+            continue
+        assigned_by = assignment.assigned_by
+        grouped.setdefault(assignment.role_id, []).append(
+            {
+                "id": assignment.team_member_id,
+                "name": _public_person_label(assignment.team_member, str(_("Team member"))),
+                "self_assigned": assignment.assigned_by_id is None,
+                "assigned_by_name": _public_person_label(assigned_by, str(_("Organizer"))) if assigned_by else None,
+            }
+        )
     roles_data = []
     for sra in shift.role_assignments.all():
-        assignments = []
-        for assignment in shift.assignments.all():
-            if assignment.team_member_id and assignment.role_id == sra.role_id:
-                assigned_by = assignment.assigned_by
-                assignments.append(
-                    {
-                        "id": assignment.team_member_id,
-                        "name": assignment.team_member.get_full_name() or assignment.team_member.email,
-                        "self_assigned": assignment.assigned_by_id is None,
-                        "assigned_by_name": (assigned_by.get_full_name() or assigned_by.email) if assigned_by else None,
-                    }
-                )
         roles_data.append(
             {
                 "id": sra.role_id,
                 "name": {"en": sra.role.name},
                 "capacity": sra.capacity,
-                "assigned": assignments,
+                "assigned": grouped.get(sra.role_id, []),
                 "is_restricted": sra.role.is_restricted,
             }
         )
@@ -2018,8 +2029,8 @@ class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
                 "current_user_name": request.user.get_full_name() or request.user.email,
                 "event_start": event.date_from.isoformat() if event.date_from else "",
                 "event_end": event.date_to.isoformat() if event.date_to else "",
-                "timezone": event.timezone,
-                "locales": ["en"],
+                "timezone": str(event.timezone),
+                "locales": list(event.settings.locales or ["en"]),
                 "rooms": [],
                 "tracks": [],
                 "speakers": [],
@@ -2124,6 +2135,7 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                 return fail(_("This role requires organizer assignment — you cannot sign up directly."))
 
             with transaction.atomic():
+                Shift.objects.select_for_update().get(pk=shift.pk, event=event)
                 sra_locked = ShiftRoleAssignment.objects.select_for_update().get(pk=sra.pk)
                 existing = ShiftAssignment.objects.select_for_update().filter(shift=shift, team_member=request.user).first()
                 if existing and existing.role_id and existing.role_id != sra.role_id:
@@ -2160,13 +2172,17 @@ class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
 
         with scope(event=event):
             shift = get_object_or_404(Shift, pk=self.kwargs["pk"], event=event)
+            assigned_counts_by_role = {
+                row["role_id"]: row["assigned_count"]
+                for row in ShiftAssignment.objects.filter(shift=shift).values("role_id").annotate(assigned_count=Count("id"))
+            }
             role_rows = []
             for sra in shift.role_assignments.select_related("role").all():
                 role_rows.append(
                     {
                         "role": sra.role,
                         "capacity": sra.capacity,
-                        "assigned_count": shift.assignments.count(),
+                        "assigned_count": assigned_counts_by_role.get(sra.role_id, 0),
                         "is_restricted": sra.role.is_restricted,
                     }
                 )
@@ -2235,6 +2251,7 @@ def _notify_organizers_shift_dropped(event, volunteer, shift):
     try:
         template = cfm.get_mail_template(EmailTemplateRoles.SHIFT_DROPPED)
     except Exception:
+        logger.exception("Failed to load shift-dropped email template for event %s", event.pk)
         return
 
     with scopes_disabled():
