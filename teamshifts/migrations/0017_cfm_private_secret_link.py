@@ -1,10 +1,6 @@
-import secrets
-
 from django.db import migrations, models
 
-
-def generate_cfm_secret():
-    return secrets.token_urlsafe(24)
+import teamshifts.models
 
 
 class Migration(migrations.Migration):
@@ -26,7 +22,7 @@ class Migration(migrations.Migration):
             model_name="callforteammembers",
             name="cfm_secret",
             field=models.CharField(
-                default=generate_cfm_secret,
+                default=teamshifts.models.generate_cfm_secret,
                 max_length=64,
                 verbose_name="Secret token",
             ),

@@ -92,7 +92,8 @@
                            value="{{ request.scheme }}://{{ request.get_host }}{% url 'plugins:teamshifts:apply_secret' organizer=request.organizer.slug event=request.event.slug secret=cfm.cfm_secret %}"
                            id="cfm-secret-link-input">
                     <span class="input-group-btn">
-                        <button type="button" class="btn btn-primary" id="cfm-copy-secret-link">
+                        <button type="button" class="btn btn-primary" id="cfm-copy-secret-link"
+                                data-copied-label="{% trans 'Copied' %}" title="{% trans 'Copy to clipboard' %}">
                             <i class="fa fa-copy"></i> {% trans "Copy" %}
                         </button>
                     </span>

@@ -1,5 +1,6 @@
 import json
 import re
+import secrets
 from datetime import timedelta
 
 import dateutil.parser
@@ -892,7 +893,10 @@ class PublicApplyView(FormView):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
         if not request.user.is_authenticated:
-            login_url = reverse("eventyay_common:auth.login")
+            login_url = reverse(
+                "cfp:event.login",
+                kwargs={"organizer": request.organizer.slug, "event": request.event.slug},
+            )
             return redirect(f"{login_url}?next={request.get_full_path()}")
         self.event = request.event
         self.organizer = request.organizer
@@ -902,8 +906,8 @@ class PublicApplyView(FormView):
             except CallForTeamMembers.DoesNotExist:
                 self.cfm = None
         if self.cfm and self.cfm.cfm_private:
-            session_secret = request.session.get(_cfm_access_session_key(self.event))
-            if session_secret != self.cfm.cfm_secret:
+            session_secret = request.session.get(_cfm_access_session_key(self.event)) or ""
+            if not secrets.compare_digest(session_secret, self.cfm.cfm_secret or ""):
                 raise Http404
         return super().dispatch(request, *args, **kwargs)
 
@@ -964,7 +968,10 @@ class PublicApplyThanksView(TemplateView):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
         if not request.user.is_authenticated:
-            login_url = reverse("eventyay_common:auth.login")
+            login_url = reverse(
+                "cfp:event.login",
+                kwargs={"organizer": request.organizer.slug, "event": request.event.slug},
+            )
             return redirect(f"{login_url}?next={request.get_full_path()}")
         self.event = request.event
         return super().dispatch(request, *args, **kwargs)
@@ -986,7 +993,7 @@ class PublicApplySecretView(PublicApplyView):
             except CallForTeamMembers.DoesNotExist:
                 raise Http404 from None
         secret = kwargs.get("secret", "")
-        if not cfm.active or not cfm.cfm_private or not secret or secret != cfm.cfm_secret:
+        if not cfm.active or not cfm.cfm_private or not secret or not secrets.compare_digest(secret, cfm.cfm_secret or ""):
             raise Http404
         # Grant session access so subsequent requests to PublicApplyView also work
         request.session[_cfm_access_session_key(event)] = secret

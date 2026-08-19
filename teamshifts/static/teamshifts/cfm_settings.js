@@ -97,17 +97,27 @@ function initSecretLinkCopy() {
   var input = document.getElementById('cfm-secret-link-input');
   if (!button || !input) return;
 
+  var originalIcon = button.querySelector('i');
+  var originalIconClass = originalIcon ? originalIcon.className : 'fa fa-copy';
+  var originalLabel = button.textContent.trim();
+
+  function renderButton(iconClass, label) {
+    while (button.firstChild) {
+      button.removeChild(button.firstChild);
+    }
+    var icon = document.createElement('i');
+    icon.className = iconClass;
+    button.appendChild(icon);
+    button.appendChild(document.createTextNode(' ' + label));
+  }
+
   button.addEventListener('click', function () {
     input.select();
     input.setSelectionRange(0, input.value.length);
     var done = function () {
-      var icon = button.querySelector('i');
-      if (icon) icon.className = 'fa fa-check';
-      var textNode = button.childNodes[button.childNodes.length - 1];
-      if (textNode && textNode.nodeType === 3) textNode.textContent = ' Copied';
-      setTimeout(function () {
-        if (icon) icon.className = 'fa fa-copy';
-        if (textNode && textNode.nodeType === 3) textNode.textContent = ' Copy';
+      renderButton('fa fa-check', button.dataset.copiedLabel || gettext('Copied'));
+      window.setTimeout(function () {
+        renderButton(originalIconClass, originalLabel);
       }, 1500);
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
