@@ -73,6 +73,7 @@ function initDescriptionPreview() {
 
 document.addEventListener('DOMContentLoaded', function () {
   initDescriptionPreview();
+  initSecretLinkCopy();
   var activeEl = document.getElementById('id_active');
   var showOnMenuEl = document.getElementById('id_show_on_menu');
   if (!activeEl || !showOnMenuEl) return;
@@ -90,3 +91,33 @@ document.addEventListener('DOMContentLoaded', function () {
   activeEl.addEventListener('change', updateShowOnMenu);
   updateShowOnMenu();
 });
+
+function initSecretLinkCopy() {
+  var button = document.getElementById('cfm-copy-secret-link');
+  var input = document.getElementById('cfm-secret-link-input');
+  if (!button || !input) return;
+
+  button.addEventListener('click', function () {
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+    var done = function () {
+      var icon = button.querySelector('i');
+      if (icon) icon.className = 'fa fa-check';
+      var textNode = button.childNodes[button.childNodes.length - 1];
+      if (textNode && textNode.nodeType === 3) textNode.textContent = ' Copied';
+      setTimeout(function () {
+        if (icon) icon.className = 'fa fa-copy';
+        if (textNode && textNode.nodeType === 3) textNode.textContent = ' Copy';
+      }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(done, function () {
+        document.execCommand('copy');
+        done();
+      });
+    } else {
+      document.execCommand('copy');
+      done();
+    }
+  });
+}

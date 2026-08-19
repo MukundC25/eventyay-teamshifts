@@ -69,6 +69,8 @@ def teamshifts_header_nav_tab(sender, request=None, **kwargs):
         return ""
     if not cfm.active or not cfm.show_on_menu:
         return ""
+    if cfm.cfm_private:
+        return ""
     apply_url = reverse(
         "plugins:teamshifts:apply",
         kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
