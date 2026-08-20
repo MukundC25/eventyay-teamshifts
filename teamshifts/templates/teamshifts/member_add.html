@@ -1,0 +1,51 @@
+{% extends "teamshifts/base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+
+{% block title %}{% trans "Add member" %} :: {{ request.event.name }}{% endblock %}
+
+{% block content %}
+  <nav id="event-nav" class="header-nav">
+    <div class="navigation">
+      <div class="navigation-title">
+        <h1>{% trans "Add member" %}</h1>
+      </div>
+    </div>
+  </nav>
+
+  <p class="help-block">
+    {% blocktrans trimmed %}
+      Add a team member directly. They will be marked as accepted and appear on the Members page.
+      Fields follow the Call for Team Members application form settings.
+    {% endblocktrans %}
+  </p>
+
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <h3 class="panel-title">{% trans "Member details" %}</h3>
+    </div>
+    <div class="panel-body">
+      <form action="" method="post" class="form-horizontal">
+        {% csrf_token %}
+        {% bootstrap_form_errors form %}
+        {% for item in form.render_items %}
+          {% if item.is_question %}
+            <div class="teamshifts-question-row">
+              {% bootstrap_field item.field layout="control" %}
+            </div>
+          {% else %}
+            {% bootstrap_field item.field layout="control" %}
+          {% endif %}
+        {% endfor %}
+        <div class="form-group submit-group">
+          <a href="{% url 'plugins:teamshifts:members' organizer=request.organizer.slug event=request.event.slug %}" class="btn btn-default">
+            {% trans "Cancel" %}
+          </a>
+          <button type="submit" class="btn btn-primary btn-save">
+            <span class="fa fa-plus"></span> {% trans "Add member" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}
