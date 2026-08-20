@@ -15,6 +15,9 @@ from .models import (
     ApplicationStatus,
     AskChoices,
     CallForTeamMembers,
+    CertificateMatchMode,
+    CertificateSettings,
+    CertificateTrigger,
     QuestionVariant,
     ShiftLocation,
     TeamApplicationQuestion,
@@ -494,6 +497,7 @@ __all__ = [
     "ShiftForm",
     "ShiftRoleAssignmentForm",
     "BaseShiftRoleFormSet",
+    "CertificateSettingsForm",
 ]
 
 
@@ -645,3 +649,31 @@ class ShiftRoleAssignmentForm(forms.ModelForm):
 
             with scopes_disabled():
                 self.fields["role"].queryset = TeamRole.objects.filter(event=event)
+
+
+class CertificateSettingsForm(forms.ModelForm):
+    class Meta:
+        model = CertificateSettings
+        fields = (
+            "require_arrived",
+            "require_min_shifts",
+            "min_shifts",
+            "match_mode",
+            "trigger",
+        )
+        widgets = {
+            "require_arrived": forms.CheckboxInput(),
+            "require_min_shifts": forms.CheckboxInput(),
+            "min_shifts": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "match_mode": forms.RadioSelect(choices=CertificateMatchMode.choices),
+            "trigger": forms.RadioSelect(choices=CertificateTrigger.choices),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("require_arrived") and not cleaned.get("require_min_shifts"):
+            raise forms.ValidationError(_("Select at least one qualification condition."))
+        min_shifts = cleaned.get("min_shifts") or 1
+        if cleaned.get("require_min_shifts") and min_shifts < 1:
+            self.add_error("min_shifts", _("Enter at least 1 completed shift."))
+        return cleaned
