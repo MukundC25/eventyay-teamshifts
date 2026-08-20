@@ -10,21 +10,17 @@
   <script defer src='{% static "teamshifts/email_templates.js" %}'></script>
 {% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
-        <h1>{% trans "Email templates" %}</h1>
-      </div>
-      <div class='navigation-actions'>
-        <a href='{% url "plugins:teamshifts:custom_email_template_create" organizer=request.organizer.slug event=request.event.slug %}'
-           class='btn btn-primary'>
-          <i class='fa fa-plus'></i> {% trans "New template" %}
-        </a>
-      </div>
-    </div>
-  </nav>
+{% block teamshifts_header %}
+  <h1>{% trans "Email templates" %}</h1>
+{% endblock %}
 
+{% block teamshifts_content %}
+  <p class='text-right'>
+    <a href='{% url "plugins:teamshifts:custom_email_template_create" organizer=request.organizer.slug event=request.event.slug %}'
+       class='btn btn-primary'>
+      <i class='fa fa-plus'></i> {% trans "New template" %}
+    </a>
+  </p>
   <p class='text-muted'>
     {% blocktrans trimmed %}
       These templates are used for the confirmation email sent when an applicant

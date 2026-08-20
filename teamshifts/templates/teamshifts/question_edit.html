@@ -7,15 +7,11 @@
     :: {{ request.event.name }}
 {% endblock %}
 
-{% block content %}
-    <nav id='event-nav' class='header-nav'>
-        <div class='navigation'>
-            <div class='navigation-title'>
-                <h1>{% if question %}{% trans "Edit question" %}{% else %}{% trans "New question" %}{% endif %}</h1>
-            </div>
-        </div>
-    </nav>
+{% block teamshifts_header %}
+        <h1>{% if question %}{% trans "Edit question" %}{% else %}{% trans "New question" %}{% endif %}</h1>
+{% endblock %}
 
+{% block teamshifts_content %}
     <form action='' method='post' class='form-horizontal'>
         {% csrf_token %}
         {% bootstrap_form_errors form %}
