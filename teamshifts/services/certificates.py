@@ -32,18 +32,19 @@ def get_certificate_settings(event) -> CertificateSettings:
 
 
 def qualifying_assignments(application: TeamMemberApplication):
-    return (
-        ShiftAssignment.objects.filter(
-            team_member=application.user,
-            shift__event=application.event,
+    with scope(event=application.event):
+        return list(
+            ShiftAssignment.objects.filter(
+                team_member=application.user,
+                shift__event=application.event,
+            )
+            .select_related("role", "shift")
+            .order_by("shift__start_time")
         )
-        .select_related("role", "shift")
-        .order_by("shift__start_time")
-    )
 
 
 def completed_shift_count(application: TeamMemberApplication) -> int:
-    return qualifying_assignments(application).filter(ended_at__isnull=False).count()
+    return sum(1 for assignment in qualifying_assignments(application) if assignment.ended_at)
 
 
 def application_context(application: TeamMemberApplication) -> dict:

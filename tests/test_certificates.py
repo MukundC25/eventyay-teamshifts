@@ -40,88 +40,92 @@ def settings_obj(event):
 
 
 def _assign_shift(event, member, *, ended=False, name="Door"):
-    with scope(event=event):
-        location, _created = ShiftLocation.objects.get_or_create(event=event, name="Hall")
-        shift = Shift.objects.create(
-            event=event,
-            name=name,
-            location=location,
-            start_time=now(),
-            end_time=now() + timedelta(hours=2),
-        )
-        assignment = ShiftAssignment.objects.create(shift=shift, team_member=member)
-        if ended:
-            assignment.ended_at = now()
-            assignment.save(update_fields=["ended_at"])
-        return assignment
+    location, _created = ShiftLocation.objects.get_or_create(event=event, name="Hall")
+    shift = Shift.objects.create(
+        event=event,
+        name=name,
+        location=location,
+        start_time=now(),
+        end_time=now() + timedelta(hours=2),
+    )
+    assignment = ShiftAssignment.objects.create(shift=shift, team_member=member)
+    if ended:
+        assignment.ended_at = now()
+        assignment.save(update_fields=["ended_at"])
+    return assignment
 
 
 @pytest.mark.django_db
-def test_arrived_only_qualifies(application, settings_obj):
-    assert member_qualifies(application, settings_obj) is False
-    application.arrived = True
-    application.save(update_fields=["arrived"])
-    assert member_qualifies(application, settings_obj) is True
+def test_arrived_only_qualifies(event, application, settings_obj):
+    with scope(event=event):
+        assert member_qualifies(application, settings_obj) is False
+        application.arrived = True
+        application.save(update_fields=["arrived"])
+        assert member_qualifies(application, settings_obj) is True
 
 
 @pytest.mark.django_db
 def test_completed_shifts_require_ended_at(event, application, member, settings_obj):
-    settings_obj.require_arrived = False
-    settings_obj.require_min_shifts = True
-    settings_obj.min_shifts = 1
-    settings_obj.save()
+    with scope(event=event):
+        settings_obj.require_arrived = False
+        settings_obj.require_min_shifts = True
+        settings_obj.min_shifts = 1
+        settings_obj.save()
 
-    _assign_shift(event, member, ended=False, name="Door 1")
-    assert completed_shift_count(application) == 0
-    assert member_qualifies(application, settings_obj) is False
+        _assign_shift(event, member, ended=False, name="Door 1")
+        assert completed_shift_count(application) == 0
+        assert member_qualifies(application, settings_obj) is False
 
-    _assign_shift(event, member, ended=True, name="Door 2")
-    assert completed_shift_count(application) == 1
-    assert member_qualifies(application, settings_obj) is True
+        _assign_shift(event, member, ended=True, name="Door 2")
+        assert completed_shift_count(application) == 1
+        assert member_qualifies(application, settings_obj) is True
 
 
 @pytest.mark.django_db
 def test_match_mode_any(event, application, member, settings_obj):
-    settings_obj.require_arrived = True
-    settings_obj.require_min_shifts = True
-    settings_obj.min_shifts = 1
-    settings_obj.match_mode = CertificateMatchMode.ANY
-    settings_obj.save()
+    with scope(event=event):
+        settings_obj.require_arrived = True
+        settings_obj.require_min_shifts = True
+        settings_obj.min_shifts = 1
+        settings_obj.match_mode = CertificateMatchMode.ANY
+        settings_obj.save()
 
-    application.arrived = True
-    application.save(update_fields=["arrived"])
-    assert member_qualifies(application, settings_obj) is True
+        application.arrived = True
+        application.save(update_fields=["arrived"])
+        assert member_qualifies(application, settings_obj) is True
 
-    application.arrived = False
-    application.save(update_fields=["arrived"])
-    _assign_shift(event, member, ended=True)
-    assert member_qualifies(application, settings_obj) is True
+        application.arrived = False
+        application.save(update_fields=["arrived"])
+        _assign_shift(event, member, ended=True)
+        assert member_qualifies(application, settings_obj) is True
 
 
 @pytest.mark.django_db
 def test_match_mode_all_requires_both(event, application, member, settings_obj):
-    settings_obj.require_arrived = True
-    settings_obj.require_min_shifts = True
-    settings_obj.min_shifts = 1
-    settings_obj.match_mode = CertificateMatchMode.ALL
-    settings_obj.save()
+    with scope(event=event):
+        settings_obj.require_arrived = True
+        settings_obj.require_min_shifts = True
+        settings_obj.min_shifts = 1
+        settings_obj.match_mode = CertificateMatchMode.ALL
+        settings_obj.save()
 
-    application.arrived = True
-    application.save(update_fields=["arrived"])
-    assert member_qualifies(application, settings_obj) is False
+        application.arrived = True
+        application.save(update_fields=["arrived"])
+        assert member_qualifies(application, settings_obj) is False
 
-    _assign_shift(event, member, ended=True)
-    assert member_qualifies(application, settings_obj) is True
+        _assign_shift(event, member, ended=True)
+        assert member_qualifies(application, settings_obj) is True
 
 
 @pytest.mark.django_db
-def test_form_requires_at_least_one_condition(settings_obj):
-    form = CertificateSettingsForm(
-        data={
-            "min_shifts": "1",
-            "match_mode": "all",
-            "trigger": "auto",
-        },
-        instance=settings_obj,
-    )
-    assert form.is_valid() is False
+def test_form_requires_at_least_one_condition(event, settings_obj):
+    with scope(event=event):
+        form = CertificateSettingsForm(
+            data={
+                "min_shifts": "1",
+                "match_mode": "all",
+                "trigger": "auto",
+            },
+            instance=settings_obj,
+        )
+        assert form.is_valid() is False
