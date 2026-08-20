@@ -4,21 +4,12 @@
 
 {% block title %}{% trans "Edit Role" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
-        <h1>{% blocktrans trimmed with name=role.name %}Edit Role "{{ name }}"{% endblocktrans %}</h1>
-      </div>
-      <div class='navigation-action'>
-        <a href='{% url "plugins:teamshifts:roles" organizer=request.organizer.slug event=request.event.slug %}' class='btn btn-default'>
-          {% trans "Back" %}
-        </a>
-      </div>
-    </div>
-  </nav>
+{% block teamshifts_header %}
+  <h1>{% blocktrans trimmed with name=role.name %}Edit Role "{{ name }}"{% endblocktrans %}</h1>
+{% endblock %}
 
-  <div class='panel panel-default'>
+{% block teamshifts_content %}
+    <div class='panel panel-default'>
     <div class='panel-heading'>
       <h3 class='panel-title'>{% trans "Role details" %}</h3>
     </div>
