@@ -14,6 +14,11 @@
 {% endblock header_right %}
 
 {% block agenda_content %}
+{% if not shift_schedule_published %}
+<div class="alert alert-info m-4">
+  {% trans "The shift schedule has not been published yet. Please check back later." %}
+</div>
+{% else %}
 <div id="fahrplan" class="grid">
   <script id="pretalx-schedule-data" type="application/json">{{ schedule_data_json|safe }}</script>
   {% vite_app_scripts 'schedule' 'src/main-wc.js' fallback='schedule/pretalx-schedule.js' %}
@@ -30,4 +35,5 @@
     </div>
   </noscript>
 </div>
+{% endif %}
 {% endblock agenda_content %}

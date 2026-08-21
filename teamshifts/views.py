@@ -2016,6 +2016,8 @@ def _wants_json(request):
 
 
 class PublicShiftScheduleMixin:
+    redirect_unpublished_to_schedule = True
+
     def dispatch(self, request, *args, **kwargs):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
@@ -2041,17 +2043,18 @@ class PublicShiftScheduleMixin:
             )
         with scope(event=self.event):
             cfm = getattr(self.event, "call_for_team_members", None)
-            if not cfm or not cfm.shift_schedule_published:
-                messages.info(
-                    request,
-                    _("The shift schedule has not been published yet. Please check back later."),
+            self.shift_schedule_published = bool(cfm and cfm.shift_schedule_published)
+        if not self.shift_schedule_published and self.redirect_unpublished_to_schedule:
+            messages.info(
+                request,
+                _("The shift schedule has not been published yet. Please check back later."),
+            )
+            return redirect(
+                reverse(
+                    "plugins:teamshifts:public_shift_schedule",
+                    kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
                 )
-                return redirect(
-                    reverse(
-                        "plugins:teamshifts:apply",
-                        kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
-                    )
-                )
+            )
         return super().dispatch(request, *args, **kwargs)
 
 
@@ -2098,10 +2101,15 @@ class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
     template_name = "teamshifts/shift_schedule.html"
+    redirect_unpublished_to_schedule = False
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         event = self.event
+
+        if not self.shift_schedule_published:
+            ctx.update({"event": event, "shift_schedule_published": False})
+            return ctx
 
         with scope(event=event):
             locations = list(event.shift_locations.all())
@@ -2140,6 +2148,7 @@ class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
                 "event": event,
                 "event_tz": str(event.timezone),
                 "schedule_data_json": json_escaped,
+                "shift_schedule_published": True,
             }
         )
         return ctx
