@@ -18,9 +18,23 @@
 {% block content %}
     <h1>
         {% trans "Shift Schedule" %}
-        <a href="{% url 'plugins:teamshifts:shift_create' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-primary pull-right">
-            <i class="fa fa-plus"></i> {% trans "Create Shift" %}
-        </a>
+        <span class="ts-schedule-header-actions pull-right">
+            <form method="post" action="{% url 'plugins:teamshifts:schedule_toggle_publish' organizer=request.event.organizer.slug event=request.event.slug %}" class="ts-inline-form">
+                {% csrf_token %}
+                {% if shift_schedule_published %}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa fa-eye-slash"></i> {% trans "Unpublish" %}
+                    </button>
+                {% else %}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa fa-globe"></i> {% trans "Publish" %}
+                    </button>
+                {% endif %}
+            </form>
+            <a href="{% url 'plugins:teamshifts:shift_create' organizer=request.event.organizer.slug event=request.event.slug %}" class="btn btn-primary">
+                <i class="fa fa-plus"></i> {% trans "Create Shift" %}
+            </a>
+        </span>
     </h1>
 
     <div id="app" data-gettext="{{ gettext_language }}" data-mode="shifts" data-csrf-token="{{ csrf_token }}"></div>

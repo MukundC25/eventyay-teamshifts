@@ -137,3 +137,17 @@ label .optional {
 #roles-table.js-formset-enabled .delete-checkbox {
     display: none;
 }
+
+
+
+.ts-inline-form {
+    display: inline;
+}
+
+.ts-schedule-header-actions {
+    margin-top: -5px;
+}
+
+.ts-schedule-header-actions .ts-inline-form + .btn {
+    margin-left: 6px;
+}

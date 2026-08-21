@@ -1899,7 +1899,32 @@ class ShiftScheduleGridEditorView(PluginActiveMixin, TeamShiftsPermissionRequire
         language_information = get_language_info(get_language())
         path = language_information.get("path", language_information.get("code", "en"))
         ctx["gettext_language"] = path.replace("-", "_")
+
+        with scope(event=self.request.event):
+            cfm = getattr(self.request.event, "call_for_team_members", None)
+            ctx["shift_schedule_published"] = cfm.shift_schedule_published if cfm else False
         return ctx
+
+
+class ShiftScheduleTogglePublishView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
+
+    def post(self, request, *args, **kwargs):
+        event = request.event
+        with scope(event=event):
+            cfm, _created = CallForTeamMembers.objects.get_or_create(event=event)
+            cfm.shift_schedule_published = not cfm.shift_schedule_published
+            cfm.save(update_fields=["shift_schedule_published"])
+            if cfm.shift_schedule_published:
+                messages.success(request, _("Shift schedule has been published. Team members can now view it."))
+            else:
+                messages.success(request, _("Shift schedule has been unpublished. Team members can no longer view it."))
+        return redirect(
+            reverse(
+                "plugins:teamshifts:schedule_grid",
+                kwargs={"organizer": request.organizer.slug, "event": event.slug},
+            )
+        )
 
 
 def _get_accepted_application(request, event):
@@ -2014,6 +2039,19 @@ class PublicShiftScheduleMixin:
                     kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
                 )
             )
+        with scope(event=self.event):
+            cfm = getattr(self.event, "call_for_team_members", None)
+            if not cfm or not cfm.shift_schedule_published:
+                messages.info(
+                    request,
+                    _("The shift schedule has not been published yet. Please check back later."),
+                )
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:apply",
+                        kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
+                    )
+                )
         return super().dispatch(request, *args, **kwargs)
 
 
