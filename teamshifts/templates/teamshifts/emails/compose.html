@@ -10,16 +10,12 @@
 
 {% block title %}{% trans "Compose email" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
+{% block teamshifts_header %}
         <h1>{% trans "Compose email" %}</h1>
-      </div>
-    </div>
-  </nav>
+{% endblock %}
 
-  <p class='help-block'>
+{% block teamshifts_content %}
+    <p class='help-block'>
     {% blocktrans trimmed %}
       Write a message to your team members. You can filter recipients by role
       and application status. Send immediately or schedule it for later.

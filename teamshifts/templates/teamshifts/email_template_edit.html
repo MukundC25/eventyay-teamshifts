@@ -4,14 +4,11 @@
 
 {% block title %}{% trans "Edit email template" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-    <nav id='event-nav' class='header-nav'>
-        <div class='navigation'>
-            <div class='navigation-title'>
-                <h1>{{ role_label }}</h1>
-            </div>
-        </div>
-    </nav>
+{% block teamshifts_header %}
+        <h1>{{ role_label }}</h1>
+{% endblock %}
+
+{% block teamshifts_content %}
     <p class='help-block'>
         {% blocktrans trimmed %}
         Available placeholders: <code>{full_name}</code>, <code>{event_name}</code>,

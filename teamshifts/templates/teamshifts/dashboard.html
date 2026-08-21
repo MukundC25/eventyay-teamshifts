@@ -3,19 +3,15 @@
 
 {% block title %}{% trans "TeamShifts" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
+{% block teamshifts_header %}
         <h2>
           {{ request.event.name }}
           <small class='text-muted'>{{ request.event.get_date_range_display }}</small>
         </h2>
-      </div>
-    </div>
-  </nav>
+{% endblock %}
 
-  <div class='dashboard'>
+{% block teamshifts_content %}
+    <div class='dashboard'>
     <div class='widget-container widget-small'>
       <a href='{% url "plugins:teamshifts:roles" organizer=request.organizer.slug event=request.event.slug %}' class='widget'>
         <div class='numwidget'>
@@ -103,7 +99,7 @@
         <div class='panel-heading'>
           <h3 class='panel-title'>
             {% trans "Accepted Team Members" %}
-            <a href='{% url "plugins:teamshifts:applications" organizer=request.organizer.slug event=request.event.slug %}?status=accepted'
+            <a href='{% url "plugins:teamshifts:members" organizer=request.organizer.slug event=request.event.slug %}'
                class='pull-right flip'>
               <small>{% trans "View all" %}</small>
             </a>
@@ -115,7 +111,7 @@
               <thead>
                 <tr>
                   <th>{% trans "Member" %}</th>
-                  <th>{% trans "Attendance" %}</th>
+                  <th>{% trans "Arrived" %}</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,12 +119,10 @@
                   <tr>
                     <td>{{ app.user.fullname|default:app.user.email }}</td>
                     <td>
-                      {% if app.attendance_confirmed is None %}
-                        <span class='label label-default'>{% trans "Not confirmed" %}</span>
-                      {% elif app.attendance_confirmed %}
-                        <span class='label label-success'>{% trans "Confirmed" %}</span>
+                      {% if app.arrived %}
+                        <span class='label label-success'>{% trans "Arrived" %}</span>
                       {% else %}
-                        <span class='label label-danger'>{% trans "Declined" %}</span>
+                        <span class='label label-default'>{% trans "Not arrived" %}</span>
                       {% endif %}
                     </td>
                   </tr>
