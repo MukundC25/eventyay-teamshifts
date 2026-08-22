@@ -9,15 +9,11 @@
 
 {% block title %}{% trans "Application Details" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-    <nav id="event-nav" class="header-nav">
-        <div class="navigation">
-            <div class="navigation-title">
-                <h1>{% trans "Application Details" %}</h1>
-            </div>
-        </div>
-    </nav>
-    
+{% block teamshifts_header %}
+        <h1>{% trans "Application Details" %}</h1>
+{% endblock %}
+
+{% block teamshifts_content %}
     <div class="teamshifts-detail-header-container">
         {% if application.status == 'accepted' %}
             <a href="{% url 'plugins:teamshifts:members' organizer=request.organizer.slug event=request.event.slug %}" class="btn btn-default">

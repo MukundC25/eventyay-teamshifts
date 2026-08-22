@@ -4,15 +4,11 @@
 
 {% block title %}{% trans "Add member" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id="event-nav" class="header-nav">
-    <div class="navigation">
-      <div class="navigation-title">
+{% block teamshifts_header %}
         <h1>{% trans "Add member" %}</h1>
-      </div>
-    </div>
-  </nav>
+{% endblock %}
 
+{% block teamshifts_content %}
   <p class="help-block">
     {% blocktrans trimmed %}
       Add a team member directly. They will be marked as accepted and appear on the Members page.

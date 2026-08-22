@@ -9,17 +9,12 @@
 
 {% block title %}{% trans "Team Applications" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-    <nav id="event-nav" class="header-nav">
-        <div class="navigation">
-            <div class="navigation-title">
-                <h1>{% trans "Applications" %}</h1>
-            </div>
+{% block teamshifts_header %}
+        <h1>{% trans "Applications" %}</h1>
+{% endblock %}
 
-        </div>
-    </nav>
-
-    <div class="teamshifts-filter-bar">
+{% block teamshifts_content %}
+    <div class="teamshifts-filter-bar clearfix">
         <form method="get" class="form-inline pull-left">
         <div class="form-group">
             <input type="text" name="q" value="{{ search|default:'' }}" class="form-control" placeholder="{% trans 'Search by name or email' %}">
