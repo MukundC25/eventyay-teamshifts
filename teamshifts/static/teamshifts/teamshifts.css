@@ -140,3 +140,11 @@ label .optional {
 
 
 
+
+.ts-panel-table {
+    margin-bottom: 0;
+}
+
+.ts-detail-label {
+    width: 30%;
+}
