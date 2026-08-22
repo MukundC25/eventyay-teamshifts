@@ -17,7 +17,7 @@ def resolve_or_create_user(*, email: str, full_name: str = "") -> tuple[User, bo
     full_name = (full_name or "").strip()
     existing = User.objects.filter(email__iexact=email).first()
     if existing:
-        if full_name and full_name != (existing.fullname or ""):
+        if full_name and not existing.fullname:
             existing.fullname = full_name
             existing.save(update_fields=["fullname"])
         return existing, False
