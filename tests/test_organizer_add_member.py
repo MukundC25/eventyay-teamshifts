@@ -7,7 +7,7 @@ from eventyay.base.models import Team, User
 
 from teamshifts.forms import TeamMemberApplicationForm
 from teamshifts.models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication
-from teamshifts.services.members import AlreadyMemberError, add_member_from_organizer
+from teamshifts.services.members import AlreadyMemberError, add_member_from_organizer, resolve_or_create_user
 
 
 @pytest.fixture
@@ -56,6 +56,28 @@ def test_add_member_creates_accepted_application(event, call_for_team_members):
     assert application.user.email == "jane.member@example.com"
     assert application.user.fullname == "Jane Member"
     assert application.phone == "+1 555 0100"
+
+
+@pytest.mark.django_db
+def test_resolve_or_create_user_keeps_existing_fullname(django_user_model):
+    existing = django_user_model.objects.create_user(email="keep-name@example.com", password="x", fullname="Original Name")
+
+    user, created = resolve_or_create_user(email="keep-name@example.com", full_name="Organizer Typo")
+
+    assert created is False
+    assert user.pk == existing.pk
+    assert user.fullname == "Original Name"
+
+
+@pytest.mark.django_db
+def test_resolve_or_create_user_sets_fullname_when_blank(django_user_model):
+    existing = django_user_model.objects.create_user(email="blank-name@example.com", password="x", fullname="")
+
+    user, created = resolve_or_create_user(email="blank-name@example.com", full_name="New Name")
+
+    assert created is False
+    assert user.pk == existing.pk
+    assert user.fullname == "New Name"
 
 
 @pytest.mark.django_db
