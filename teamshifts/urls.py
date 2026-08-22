@@ -14,6 +14,11 @@ event_patterns = [
         views.PublicApplyThanksView.as_view(),
         name="apply_thanks",
     ),
+    path(
+        "teamshifts/apply/s/<str:secret>/",
+        views.PublicApplySecretView.as_view(),
+        name="apply_secret",
+    ),
 ]
 
 urlpatterns = [

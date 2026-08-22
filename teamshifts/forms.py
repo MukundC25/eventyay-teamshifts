@@ -46,6 +46,7 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "title",
             "active",
             "show_on_menu",
+            "cfm_private",
             "deadline",
             "description",
         )
