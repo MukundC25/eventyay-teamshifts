@@ -63,12 +63,12 @@
             {% if cfm.active %}
                 {% if cfm.cfm_private %}
                     <a href="{% url 'plugins:teamshifts:apply_secret' organizer=request.organizer.slug event=request.event.slug secret=cfm.cfm_secret %}"
-                       class="btn btn-default" target="_blank" rel="noopener">
+                       class="btn btn-default btn-lg" target="_blank" rel="noopener">
                         <span class="fa fa-external-link"></span> {% trans "View call page" %}
                     </a>
                 {% else %}
                     <a href="{% url 'plugins:teamshifts:apply' organizer=request.organizer.slug event=request.event.slug %}"
-                       class="btn btn-default" target="_blank" rel="noopener">
+                       class="btn btn-default btn-lg" target="_blank" rel="noopener">
                         <span class="fa fa-external-link"></span> {% trans "View call page" %}
                     </a>
                 {% endif %}

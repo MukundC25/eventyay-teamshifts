@@ -83,14 +83,22 @@ function initCallVisibilityToggles() {
   var privateEl = document.getElementById('id_cfm_private');
   if (!activeEl || !showOnMenuEl) return;
 
+  // Hidden input preserves the value when the checkbox is disabled.
+  var hidden = document.createElement('input');
+  hidden.type = 'hidden';
+  hidden.name = showOnMenuEl.name;
+  hidden.value = showOnMenuEl.checked ? 'on' : '';
+  showOnMenuEl.parentNode.insertBefore(hidden, showOnMenuEl);
+
+  showOnMenuEl.addEventListener('change', function () {
+    hidden.value = showOnMenuEl.checked ? 'on' : '';
+  });
+
   function updateShowOnMenu() {
     var row = showOnMenuEl.closest('.form-group') || showOnMenuEl.parentElement;
-    // Nav advertise only makes sense for an active, public call.
-    // Private mode is invite-only via secret link, so force menu off.
-    var canShowOnMenu = activeEl.checked && !(privateEl && privateEl.checked);
-    if (!canShowOnMenu) {
+    var hasEffect = activeEl.checked && !(privateEl && privateEl.checked);
+    if (!hasEffect) {
       showOnMenuEl.disabled = true;
-      showOnMenuEl.checked = false;
       if (row) row.style.opacity = '0.5';
     } else {
       showOnMenuEl.disabled = false;

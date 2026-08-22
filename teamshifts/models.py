@@ -117,6 +117,10 @@ class CallForTeamMembers(models.Model):
         verbose_name_plural = _("Calls for Team Members")
 
     @property
+    def effective_show_on_menu(self) -> bool:
+        return self.active and not self.cfm_private and self.show_on_menu
+
+    @property
     def is_open(self):
         if not self.active:
             return False

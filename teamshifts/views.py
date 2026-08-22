@@ -882,10 +882,6 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
         return ctx
 
 
-def _cfm_access_session_key(event):
-    return f"teamshifts_cfm_access_{event.pk}"
-
-
 class PublicApplyView(FormView):
     template_name = "teamshifts/apply.html"
 
@@ -906,9 +902,11 @@ class PublicApplyView(FormView):
             except CallForTeamMembers.DoesNotExist:
                 self.cfm = None
         if self.cfm and self.cfm.cfm_private:
-            session_secret = request.session.get(_cfm_access_session_key(self.event)) or ""
-            if not secrets.compare_digest(session_secret, self.cfm.cfm_secret or ""):
-                raise Http404
+            if not getattr(request, "_cfm_secret_verified", False):
+                with scope(event=self.event):
+                    has_application = TeamMemberApplication.objects.filter(event=self.event, user=request.user).exists()
+                if not has_application:
+                    raise Http404
         return super().dispatch(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
@@ -995,9 +993,7 @@ class PublicApplySecretView(PublicApplyView):
         secret = kwargs.get("secret", "")
         if not cfm.active or not cfm.cfm_private or not secret or not secrets.compare_digest(secret, cfm.cfm_secret or ""):
             raise Http404
-        # Grant session access so subsequent requests to PublicApplyView also work
-        request.session[_cfm_access_session_key(event)] = secret
-        # Let PublicApplyView.dispatch handle the rest (it will pass the private check now)
+        request._cfm_secret_verified = True
         return super().dispatch(request, *args, **kwargs)
 
 
