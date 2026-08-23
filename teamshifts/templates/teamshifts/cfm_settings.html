@@ -20,6 +20,7 @@
             {% bootstrap_field form.title layout="control" %}
             {% bootstrap_field form.active layout="control" %}
             {% bootstrap_field form.show_on_menu layout="control" %}
+            {% bootstrap_field form.cfm_private layout="control" %}
             {% bootstrap_field form.deadline layout="control" %}
             <div id="description_panel" class="form-group description-group">
                 <label class="col-md-3 control-label" for="{{ form.description.id_for_label }}">
@@ -56,10 +57,17 @@
         <div class="form-group submit-group">
             <button type="submit" class="btn btn-primary btn-save">{% trans "Save" %}</button>
             {% if cfm.active %}
-                <a href="{% url 'plugins:teamshifts:apply' organizer=request.organizer.slug event=request.event.slug %}"
-                   class="btn btn-default" target="_blank" rel="noopener">
-                    <span class="fa fa-external-link"></span> {% trans "View call page" %}
-                </a>
+                {% if cfm.cfm_private %}
+                    <a href="{% url 'plugins:teamshifts:apply_secret' organizer=request.organizer.slug event=request.event.slug secret=cfm.cfm_secret %}"
+                       class="btn btn-default btn-lg" target="_blank" rel="noopener">
+                        <span class="fa fa-external-link"></span> {% trans "View call page" %}
+                    </a>
+                {% else %}
+                    <a href="{% url 'plugins:teamshifts:apply' organizer=request.organizer.slug event=request.event.slug %}"
+                       class="btn btn-default btn-lg" target="_blank" rel="noopener">
+                        <span class="fa fa-external-link"></span> {% trans "View call page" %}
+                    </a>
+                {% endif %}
             {% endif %}
             <a href="{% url 'plugins:teamshifts:dashboard' organizer=request.organizer.slug event=request.event.slug %}"
                class="btn btn-default btn-lg">
@@ -67,4 +75,36 @@
             </a>
         </div>
     </form>
+
+    {% if cfm.active and cfm.cfm_private %}
+        <div class="panel panel-default call-secret-panel">
+            <div class="panel-heading">
+                <h3 class="panel-title"><i class="fa fa-lock"></i> {% trans "Secret call link" %}</h3>
+            </div>
+            <div class="panel-body">
+                <p class="text-muted">{% trans "This call is private: it is not linked anywhere public. Share the link below with the people you want to invite. Anyone who has it can open the call and apply." %}</p>
+                <div class="input-group call-secret-input">
+                    <input type="text" class="form-control" readonly
+                           value="{{ request.scheme }}://{{ request.get_host }}{% url 'plugins:teamshifts:apply_secret' organizer=request.organizer.slug event=request.event.slug secret=cfm.cfm_secret %}"
+                           id="cfm-secret-link-input">
+                    <span class="input-group-btn">
+                        <button type="button" class="btn btn-primary" id="cfm-copy-secret-link"
+                                data-copied-label="{% trans 'Copied' %}" title="{% trans 'Copy to clipboard' %}">
+                            <i class="fa fa-copy"></i> {% trans "Copy" %}
+                        </button>
+                    </span>
+                </div>
+                {% trans "Regenerate the secret link? The current link will stop working immediately." as regenerate_confirm_msg %}
+                <form action="" method="post" class="call-secret-regenerate">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="regenerate_secret">
+                    <button type="submit" class="btn btn-default btn-sm"
+                            onclick="return confirm('{{ regenerate_confirm_msg|escapejs }}')">
+                        <i class="fa fa-refresh"></i> {% trans "Regenerate link" %}
+                    </button>
+                    <span class="text-muted call-secret-hint">{% trans "Regenerating immediately invalidates the current link." %}</span>
+                </form>
+            </div>
+        </div>
+    {% endif %}
 {% endblock %}

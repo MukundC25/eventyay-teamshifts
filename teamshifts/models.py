@@ -1,9 +1,16 @@
+import secrets
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_scopes import ScopedManager, scope
 from i18nfield.fields import I18nTextField
+
+
+def generate_cfm_secret():
+    return secrets.token_urlsafe(24)
+
 
 CFM_BUILTIN_FIELD_KEYS = ("full_name", "email", "phone", "availability")
 
@@ -57,6 +64,16 @@ class CallForTeamMembers(models.Model):
         verbose_name=_("Show in public navigation"),
         help_text=_("Show a link to the application form in the public event navigation. Only visible when Active is enabled."),
     )
+    cfm_private = models.BooleanField(
+        default=False,
+        verbose_name=_("Private (secret link only)"),
+        help_text=_("When enabled, the call is not linked from public pages. Only people with the secret link can access it."),
+    )
+    cfm_secret = models.CharField(
+        max_length=64,
+        default=generate_cfm_secret,
+        verbose_name=_("Secret token"),
+    )
     deadline = models.DateTimeField(null=True, blank=True, verbose_name=_("Deadline"))
     title = models.CharField(
         max_length=200,
@@ -106,12 +123,20 @@ class CallForTeamMembers(models.Model):
         verbose_name_plural = _("Calls for Team Members")
 
     @property
+    def effective_show_on_menu(self) -> bool:
+        return self.active and not self.cfm_private and self.show_on_menu
+
+    @property
     def is_open(self):
         if not self.active:
             return False
         if self.deadline and timezone.now() > self.deadline:
             return False
         return True
+
+    def regenerate_secret(self):
+        self.cfm_secret = generate_cfm_secret()
+        self.save(update_fields=["cfm_secret"])
 
     def get_ask_state(self, field_key: str) -> str:
         if field_key in CFM_LOCKED_FIELDS:

@@ -15,6 +15,11 @@ event_patterns = [
         name="apply_thanks",
     ),
     path(
+        "teamshifts/apply/s/<str:secret>/",
+        views.PublicApplySecretView.as_view(),
+        name="apply_secret",
+    ),
+    path(
         "teamshifts/shifts/",
         views.PublicShiftScheduleView.as_view(),
         name="public_shift_schedule",

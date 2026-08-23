@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0016_shiftassignment_role"),
+        ("teamshifts", "0017_cfm_private_secret_link"),
     ]
 
     operations = [
