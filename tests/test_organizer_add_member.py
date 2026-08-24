@@ -6,7 +6,7 @@ from django_scopes import scope
 from eventyay.base.models import Team, User
 
 from teamshifts.forms import TeamMemberApplicationForm
-from teamshifts.models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication
+from teamshifts.models import ApplicationStatus, CallForTeamMembers, EmailTemplateRoles, TeamMemberApplication
 from teamshifts.services.members import AlreadyMemberError, add_member_from_organizer, resolve_or_create_user
 
 
@@ -53,6 +53,7 @@ def test_add_member_creates_accepted_application(event, call_for_team_members):
     assert form.is_valid(), form.errors
     application = add_member_from_organizer(event=event, form=form)
     assert application.status == ApplicationStatus.ACCEPTED
+    assert application.added_by_organizer is True
     assert application.user.email == "jane.member@example.com"
     assert application.user.fullname == "Jane Member"
     assert application.phone == "+1 555 0100"
@@ -118,6 +119,7 @@ def test_add_member_accepts_pending_application(event, call_for_team_members, dj
     updated = add_member_from_organizer(event=event, form=form)
     assert updated.pk == application.pk
     assert updated.status == ApplicationStatus.ACCEPTED
+    assert updated.added_by_organizer is True
     assert updated.phone == "123"
 
 
@@ -127,15 +129,66 @@ def test_member_add_view_creates_member(mock_queue, client, event, call_for_team
     settings.SITE_URL = "https://testserver"
     client.force_login(orga_user)
     url = reverse("plugins:teamshifts:member_add", kwargs={"organizer": event.organizer.slug, "event": event.slug})
-    response = client.post(
-        url,
-        {
-            "full_name": "Org Added",
-            "email": "org.added@example.com",
-        },
-    )
+    with patch("teamshifts.views.transaction.on_commit", side_effect=lambda fn: fn()):
+        response = client.post(
+            url,
+            {
+                "full_name": "Org Added",
+                "email": "org.added@example.com",
+            },
+        )
     assert response.status_code == 302
     with scope(event=event):
         application = TeamMemberApplication.objects.get(event=event, user__email="org.added@example.com")
         assert application.status == ApplicationStatus.ACCEPTED
+        assert application.added_by_organizer is True
     assert User.objects.filter(email="org.added@example.com").exists()
+    mock_queue.assert_called_once()
+    called_application, called_role = mock_queue.call_args[0]
+    assert called_application.pk == application.pk
+    assert called_role == EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER
+
+
+@pytest.mark.django_db
+def test_organizer_added_member_excluded_from_applicants_list(client, event, call_for_team_members, orga_user, django_user_model, settings):
+    settings.SITE_URL = "https://testserver"
+    with scope(event=event):
+        applicant = django_user_model.objects.create_user(email="applicant@example.com", password="x", fullname="Applicant")
+        TeamMemberApplication.objects.create(event=event, user=applicant, status=ApplicationStatus.PENDING)
+
+    form = TeamMemberApplicationForm(
+        data={"full_name": "Org Added", "email": "orgmember@example.com"},
+        event=event,
+        cfm=call_for_team_members,
+        organizer_mode=True,
+    )
+    assert form.is_valid(), form.errors
+    add_member_from_organizer(event=event, form=form)
+
+    client.force_login(orga_user)
+    url = reverse("plugins:teamshifts:applications", kwargs={"organizer": event.organizer.slug, "event": event.slug})
+    response = client.get(url)
+    assert response.status_code == 200
+    emails = {app.user.email for app in response.context["applications"]}
+    assert "applicant@example.com" in emails
+    assert "orgmember@example.com" not in emails
+
+
+@pytest.mark.django_db
+def test_organizer_added_member_appears_on_members_list(client, event, call_for_team_members, orga_user, settings):
+    settings.SITE_URL = "https://testserver"
+    form = TeamMemberApplicationForm(
+        data={"full_name": "Org Added", "email": "orgmember2@example.com"},
+        event=event,
+        cfm=call_for_team_members,
+        organizer_mode=True,
+    )
+    assert form.is_valid(), form.errors
+    add_member_from_organizer(event=event, form=form)
+
+    client.force_login(orga_user)
+    url = reverse("plugins:teamshifts:members", kwargs={"organizer": event.organizer.slug, "event": event.slug})
+    response = client.get(url)
+    assert response.status_code == 200
+    emails = {member.user.email for member in response.context["members"]}
+    assert "orgmember2@example.com" in emails

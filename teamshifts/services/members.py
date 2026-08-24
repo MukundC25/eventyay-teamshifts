@@ -43,7 +43,8 @@ def add_member_from_organizer(*, event, form) -> TeamMemberApplication:
                 application.status = ApplicationStatus.ACCEPTED
                 application.phone = phone
                 application.availability_notes = availability_notes
-                application.save(update_fields=["status", "phone", "availability_notes", "updated_at"])
+                application.added_by_organizer = True
+                application.save(update_fields=["status", "phone", "availability_notes", "added_by_organizer", "updated_at"])
                 application.answers.all().delete()
             else:
                 application = TeamMemberApplication.objects.create(
@@ -52,6 +53,7 @@ def add_member_from_organizer(*, event, form) -> TeamMemberApplication:
                     status=ApplicationStatus.ACCEPTED,
                     phone=phone,
                     availability_notes=availability_notes,
+                    added_by_organizer=True,
                 )
 
             for question, answer_text in answers:

@@ -233,6 +233,11 @@ class TeamMemberApplication(models.Model):
         verbose_name=_("Attendance confirmed"),
         help_text=_("Whether the team member has confirmed they will attend. None = not yet responded, True = confirmed, False = declined."),
     )
+    added_by_organizer = models.BooleanField(
+        default=False,
+        verbose_name=_("Added by organizer"),
+        help_text=_("Whether this member was added directly by an organizer instead of applying through the public Call for Team Members."),
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Applied At"))
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated At"))
 
@@ -501,6 +506,7 @@ class EmailTemplateRoles(models.TextChoices):
     APPLICATION_RECEIVED = "teamshifts.application.received", _("Application received")
     APPLICATION_ACCEPTED = "teamshifts.application.accepted", _("Application accepted")
     APPLICATION_REJECTED = "teamshifts.application.rejected", _("Application rejected")
+    MEMBER_ADDED_BY_ORGANIZER = "teamshifts.member.added_by_organizer", _("Added as volunteer by organizer")
 
 
 class TeamShiftsEmailTemplate(models.Model):

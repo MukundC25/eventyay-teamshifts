@@ -86,7 +86,9 @@ class TeamShiftsDashboard(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
             ctx["pending_count"] = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.PENDING).count()
             ctx["accepted_count"] = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).count()
             ctx["shift_count"] = Shift.objects.filter(event=event).count()
-            ctx["recent_applications"] = list(TeamMemberApplication.objects.filter(event=event).select_related("user").order_by("-created_at")[:5])
+            ctx["recent_applications"] = list(
+                TeamMemberApplication.objects.filter(event=event, added_by_organizer=False).select_related("user").order_by("-created_at")[:5]
+            )
             ctx["accepted_members"] = list(
                 TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user").order_by("-updated_at")[:8]
             )
@@ -677,7 +679,12 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
     def get_queryset(self):
         event = self.request.event
         with scope(event=event):
-            qs = TeamMemberApplication.objects.filter(event=event).select_related("user").prefetch_related("answers__question").order_by("-created_at")
+            qs = (
+                TeamMemberApplication.objects.filter(event=event, added_by_organizer=False)
+                .select_related("user")
+                .prefetch_related("answers__question")
+                .order_by("-created_at")
+            )
             status_filter = self.request.GET.get("status")
 
             search = self.request.GET.get("q", "").strip()
@@ -1573,7 +1580,7 @@ class MemberCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
             form.add_error("email", _("This person is already an accepted team member for this event."))
             return self.form_invalid(form)
 
-        transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
+        transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER))
         messages.success(self.request, _("Team member added."))
         return redirect(
             "plugins:teamshifts:members",
