@@ -1890,6 +1890,16 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                     if current_count >= role_assignment.capacity:
                         return HttpResponseBadRequest("Role capacity has been reached for this shift.")
 
+            if shift.start_time and shift.end_time:
+                conflicting = ShiftAssignment.objects.filter(
+                    team_member=user,
+                    shift__event=event,
+                    shift__start_time__lt=shift.end_time,
+                    shift__end_time__gt=shift.start_time,
+                ).exclude(shift=shift).select_related("shift").first()
+                if conflicting:
+                    return HttpResponseBadRequest("Member is already assigned to another shift during this time.")
+
             ShiftAssignment.objects.update_or_create(
                 shift=shift,
                 team_member=user,
@@ -2227,6 +2237,15 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                 current_count = ShiftAssignment.objects.filter(shift=shift, role_id=sra.role_id).exclude(team_member=request.user).count()
                 if current_count >= sra_locked.capacity:
                     return fail(_("Sorry, this role is now full."))
+                if shift.start_time and shift.end_time:
+                    conflicting = ShiftAssignment.objects.filter(
+                        team_member=request.user,
+                        shift__event=event,
+                        shift__start_time__lt=shift.end_time,
+                        shift__end_time__gt=shift.start_time,
+                    ).exclude(shift=shift).select_related("shift").first()
+                    if conflicting:
+                        return fail(_("You are already assigned to another shift during this time."))
                 _assignment, created = ShiftAssignment.objects.update_or_create(
                     shift=shift,
                     team_member=request.user,
