@@ -137,3 +137,7 @@ label .optional {
 #roles-table.js-formset-enabled .delete-checkbox {
     display: none;
 }
+
+.teamshifts-certificate-progress-bar {
+    width: 0%;
+}

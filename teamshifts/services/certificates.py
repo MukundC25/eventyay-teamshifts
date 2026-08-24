@@ -4,8 +4,10 @@ import zipfile
 from io import BytesIO
 
 from django.core.files.base import ContentFile
+from django.utils.formats import date_format
 from django.utils.text import slugify
 from django.utils.timezone import now
+from django.utils.translation import gettext
 from django_scopes import scope
 
 from ..models import (
@@ -17,7 +19,7 @@ from ..models import (
     ShiftAssignment,
     TeamMemberApplication,
 )
-from ..pdf import default_layout, format_event_dates, layout_is_initial_overlay, render_certificate_pdf
+from ..pdf import default_layout, format_event_date_from, format_event_date_to, format_event_dates, layout_is_initial_overlay, render_certificate_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 def get_certificate_settings(event) -> CertificateSettings:
     with scope(event=event):
         settings, created = CertificateSettings.objects.get_or_create(event=event)
-        if not settings.layout or (not settings.background and layout_is_initial_overlay(settings.layout)):
+        if created or not settings.layout or layout_is_initial_overlay(settings.layout):
             settings.layout = json.dumps(default_layout())
             settings.save(update_fields=["layout"])
     return settings
@@ -51,15 +53,41 @@ def application_context(application: TeamMemberApplication) -> dict:
     assignments = list(qualifying_assignments(application))
     roles = sorted({assignment.role.name for assignment in assignments if assignment.role_id})
     user = application.user
+    event = application.event
+
+    member_name = (user.fullname or "").strip() or user.email
+    event_name = str(event.name)
+    location = str(event.location) if event.location else ""
+    date_from = format_event_date_from(event)
+    date_to = format_event_date_to(event)
+    event_color = event.visible_primary_color or "#c0392b"
+    issued = now()
+
+    body_line2 = gettext("the %(event_name)s, held from %(date_from)s to %(date_to)s, in %(location)s.") % {
+        "event_name": event_name,
+        "date_from": date_from,
+        "date_to": date_to,
+        "location": location,
+    }
+
     return {
-        "member_name": (user.fullname or "").strip() or user.email,
+        "certificate_title": gettext("Certificate of Appreciation"),
+        "certificate_intro": gettext("presents this"),
+        "certificate_body_line1": gettext("For your dedication and outstanding contributions at"),
+        "certificate_body_line2": body_line2,
+        "member_name": member_name,
         "member_email": user.email or "",
-        "event_name": str(application.event.name),
-        "event_dates": format_event_dates(application.event),
-        "organizer_name": str(application.event.organizer.name),
+        "event_name": event_name,
+        "event_dates": format_event_dates(event),
+        "event_date_from": date_from,
+        "event_date_to": date_to,
+        "event_location": location,
+        "organizer_name": str(event.organizer.name),
         "completed_shift_count": str(completed_shift_count(application)),
         "assigned_shift_count": str(len(assignments)),
         "roles": ", ".join(roles),
+        "issued_date": gettext("Date Issued: %(date)s") % {"date": date_format(issued, "DATE_FORMAT")},
+        "_event_color": event_color,
     }
 
 
@@ -110,12 +138,25 @@ def maybe_auto_issue_certificate(application: TeamMemberApplication) -> MemberCe
     if settings.trigger != CertificateTrigger.AUTO:
         return None
     if not member_qualifies(application, settings):
+        # Member no longer qualifies — revoke any existing certificate
+        _revoke_certificate(application)
         return None
     try:
         return generate_certificate(application, settings)
     except Exception:
         logger.exception("Failed to auto-generate member certificate for application %s", application.pk)
         return None
+
+
+def _revoke_certificate(application: TeamMemberApplication) -> None:
+    with scope(event=application.event):
+        try:
+            cert = MemberCertificate.objects.get(application=application)
+        except MemberCertificate.DoesNotExist:
+            return
+        if cert.file:
+            cert.file.delete(save=False)
+        cert.delete()
 
 
 def generate_all_certificates(event) -> int:
@@ -128,11 +169,15 @@ def generate_all_certificates(event) -> int:
 
 
 def zip_generated_certificates(event) -> BytesIO | None:
+    settings = get_certificate_settings(event)
+    qualifying = set(app.pk for app in qualifying_applications(event, settings))
     with scope(event=event):
         certificates = list(
-            MemberCertificate.objects.filter(application__event=event, file__isnull=False).select_related(
-                "application", "application__user", "application__event"
-            )
+            MemberCertificate.objects.filter(
+                application__event=event,
+                application__pk__in=qualifying,
+                file__isnull=False,
+            ).select_related("application", "application__user", "application__event")
         )
     if not certificates:
         return None

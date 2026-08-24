@@ -1,6 +1,5 @@
 import json
 import mimetypes
-from io import BytesIO
 
 from django.contrib import messages
 from django.core.files.base import ContentFile
@@ -15,13 +14,15 @@ from eventyay.base.models import CachedFile
 from eventyay.control.views.pdf import BaseEditorView
 
 from .forms import CertificateSettingsForm
-from .models import ApplicationStatus, MemberCertificate, TeamMemberApplication
+from .models import ApplicationStatus, CertificateSettings, MemberCertificate, TeamMemberApplication
 from .pdf import (
     CERTIFICATE_PLACEHOLDERS,
-    default_certificate_pdf,
     default_layout,
+    editor_image_variables,
     editor_variables,
+    get_default_background_url,
     image_file_to_pdf,
+    open_default_background,
     preview_context,
     render_certificate_pdf,
 )
@@ -38,15 +39,19 @@ from .views import PluginActiveMixin
 IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg"}
 
 
-def _store_uploaded_background(settings, uploaded):
+def _apply_background_change(settings: CertificateSettings, uploaded) -> None:
+    if uploaded is None:
+        return
+    if settings.background:
+        settings.background.delete(save=False)
+    if uploaded is False:
+        settings.background = None
+        settings.save(update_fields=["background"])
+        return
     content_type = (uploaded.content_type or mimetypes.guess_type(uploaded.name)[0] or "").lower()
     if content_type in IMAGE_TYPES or (uploaded.name or "").lower().endswith((".png", ".jpg", ".jpeg")):
         pdf_buffer = image_file_to_pdf(uploaded)
         uploaded = ContentFile(pdf_buffer.read(), name="background.pdf")
-    elif content_type not in {"application/pdf", "application/x-pdf"} and not (uploaded.name or "").lower().endswith(".pdf"):
-        raise ValueError(_("Please upload a PDF, PNG, or JPEG file."))
-    if settings.background:
-        settings.background.delete(save=False)
     settings.background.save("background.pdf", uploaded, save=True)
 
 
@@ -82,17 +87,20 @@ class CertificateSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
             response = FileResponse(archive, content_type="application/zip")
             response["Content-Disposition"] = f'attachment; filename="certificates-{request.event.slug}.zip"'
             return response
+        if action == "delete_background":
+            if settings.background:
+                settings.background.delete(save=False)
+                settings.background = None
+                settings.save(update_fields=["background"])
+            messages.success(request, _("Custom background template has been removed."))
+            return redirect(self._url(request))
 
-        form = CertificateSettingsForm(request.POST, instance=settings)
+        form = CertificateSettingsForm(request.POST, request.FILES, instance=settings)
         if form.is_valid():
             settings = form.save()
             uploaded = request.FILES.get("background")
             if uploaded:
-                try:
-                    _store_uploaded_background(settings, uploaded)
-                except ValueError as exc:
-                    messages.error(request, str(exc))
-                    return render(request, self.template_name, self._context(request, form, settings))
+                _apply_background_change(settings, uploaded)
             messages.success(request, _("Certificate settings have been saved."))
             return redirect(self._url(request))
         messages.error(request, _("We could not save your changes. See below for details."))
@@ -138,6 +146,7 @@ class CertificatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixi
         pdf = render_certificate_pdf(settings, preview_context(request.event))
         response = HttpResponse(pdf, content_type="application/pdf")
         response["Content-Disposition"] = 'inline; filename="certificate-preview.pdf"'
+        response["Cache-Control"] = "no-store"
         return response
 
 
@@ -145,17 +154,19 @@ class CertificateDefaultPdfView(PluginActiveMixin, TeamShiftsPermissionRequiredM
     permission = "can_teamshifts_manage_applicants"
 
     def get(self, request, *args, **kwargs):
-        pdf = default_certificate_pdf(
-            locale=request.event.settings.locale,
-            region=request.event.settings.region,
-        )
-        response = HttpResponse(pdf, content_type="application/pdf")
+        bg = open_default_background()
+        pdf_bytes = bg.read()
+        if hasattr(bg, "close"):
+            bg.close()
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = 'inline; filename="certificate-default.pdf"'
+        response["Cache-Control"] = "no-store"
         return response
 
 
 class CertificateEditorView(PluginActiveMixin, BaseEditorView):
     permission = "can_change_settings"
+    template_name = "teamshifts/certificate_editor.html"
     accepted_formats = ("application/pdf", "image/png", "image/jpeg")
     title = _("Member certificate layout")
 
@@ -167,7 +178,7 @@ class CertificateEditorView(PluginActiveMixin, BaseEditorView):
         return editor_variables()
 
     def get_images(self):
-        return {}
+        return editor_image_variables()
 
     def get_layout_settings_key(self):
         return "teamshifts_certificate_layout"
@@ -176,10 +187,7 @@ class CertificateEditorView(PluginActiveMixin, BaseEditorView):
         return "teamshifts_certificate_background"
 
     def get_default_background(self):
-        return reverse(
-            "plugins:teamshifts:certificate_default",
-            kwargs={"organizer": self.request.organizer.slug, "event": self.request.event.slug},
-        )
+        return get_default_background_url()
 
     def get_current_layout(self):
         layout = self.certificate_settings.layout
@@ -208,12 +216,7 @@ class CertificateEditorView(PluginActiveMixin, BaseEditorView):
     def _open_saved_background_pdf(self):
         if self.certificate_settings.background and self.certificate_settings.background.name:
             return self.certificate_settings.background.open("rb")
-        return BytesIO(
-            default_certificate_pdf(
-                locale=self.request.event.settings.locale,
-                region=self.request.event.settings.region,
-            )
-        )
+        return open_default_background()
 
     def process_upload(self):
         uploaded = self.request.FILES.get("background")

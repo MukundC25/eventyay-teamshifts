@@ -18,15 +18,20 @@
         <fieldset>
             <legend>{% trans "Certificate design" %}</legend>
             <div class="form-group">
-                <label class="col-md-3 control-label">{% trans "Template" %}</label>
+                <label class="col-md-3 control-label">{% trans "Certificate template" %}</label>
                 <div class="col-md-9">
+                    {% if settings.background %}
+                        <p>
+                            <a href="{{ settings.background.url }}" target="_blank" rel="noopener" class="thumbnailed-file-link">{{ settings.background.name|cut:"pub/" }}</a>
+                            <button type="submit" name="action" value="delete_background" class="btn btn-danger btn-xs" title="{% trans 'Delete' %}">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </p>
+                    {% endif %}
                     <input type="file" name="background" class="form-control" accept="application/pdf,image/png,image/jpeg">
                     <p class="help-block">
-                        {% trans "A default certificate design is used until you upload your own PDF or image. Personalised fields are placed on top of the artwork." %}
+                        {% trans "Upload a PDF, PNG, or JPEG file. Leave empty to use the default eventyay certificate design." %}
                     </p>
-                    {% if settings.background %}
-                        <p class="help-block">{% trans "A custom background file is stored for this event." %}</p>
-                    {% endif %}
                     <p>
                         <a class="btn btn-default" href="{% url 'plugins:teamshifts:certificate_editor' organizer=request.organizer.slug event=request.event.slug %}">
                             <span class="fa fa-pencil"></span> {% trans "Open layout editor" %}
@@ -78,28 +83,26 @@
 
         <fieldset>
             <legend>{% trans "Generation trigger" %}</legend>
-            {% bootstrap_field form.trigger layout="control" %}
-            <p class="help-block">
-                {% trans "When automatic is selected, a certificate is generated as soon as a member meets the conditions, for example after they are marked arrived." %}
-            </p>
+            {% bootstrap_field form.generate_automatically layout="control" %}
+        </fieldset>
+
+        <fieldset>
+            <legend>{% trans "Organizer actions" %}</legend>
+            <div class="form-group">
+                <div class="col-md-9 col-md-offset-3">
+                    <button type="submit" name="action" value="generate_all" class="btn btn-default">
+                        <span class="fa fa-cogs"></span> {% trans "Generate all" %}
+                    </button>
+                    <button type="submit" name="action" value="download_all" class="btn btn-default">
+                        <span class="fa fa-download"></span> {% trans "Download all" %}
+                    </button>
+                </div>
+            </div>
         </fieldset>
 
         <div class="form-group submit-group">
             <button type="submit" class="btn btn-primary btn-save">{% trans "Save" %}</button>
         </div>
-    </form>
-
-    <form action="" method="post" class="form-inline">
-        {% csrf_token %}
-        <fieldset>
-            <legend>{% trans "Organizer actions" %}</legend>
-            <button type="submit" name="action" value="generate_all" class="btn btn-default">
-                <span class="fa fa-cogs"></span> {% trans "Generate all" %}
-            </button>
-            <button type="submit" name="action" value="download_all" class="btn btn-default">
-                <span class="fa fa-download"></span> {% trans "Download all" %}
-            </button>
-        </fieldset>
     </form>
 
     <fieldset>

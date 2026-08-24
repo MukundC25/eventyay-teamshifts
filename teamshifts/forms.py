@@ -652,6 +652,15 @@ class ShiftRoleAssignmentForm(forms.ModelForm):
 
 
 class CertificateSettingsForm(forms.ModelForm):
+    generate_automatically = forms.BooleanField(
+        required=False,
+        label=_("Generate automatically"),
+        help_text=_(
+            "When enabled, a certificate is generated as soon as a member meets the conditions, for example "
+            "after they are marked arrived. When disabled, an organizer generates certificates manually."
+        ),
+    )
+
     class Meta:
         model = CertificateSettings
         fields = (
@@ -659,15 +668,18 @@ class CertificateSettingsForm(forms.ModelForm):
             "require_min_shifts",
             "min_shifts",
             "match_mode",
-            "trigger",
         )
         widgets = {
             "require_arrived": forms.CheckboxInput(),
             "require_min_shifts": forms.CheckboxInput(),
             "min_shifts": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
             "match_mode": forms.RadioSelect(choices=CertificateMatchMode.choices),
-            "trigger": forms.RadioSelect(choices=CertificateTrigger.choices),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["generate_automatically"].initial = self.instance.trigger == CertificateTrigger.AUTO
 
     def clean(self):
         cleaned = super().clean()
@@ -677,3 +689,10 @@ class CertificateSettingsForm(forms.ModelForm):
         if cleaned.get("require_min_shifts") and min_shifts < 1:
             self.add_error("min_shifts", _("Enter at least 1 completed shift."))
         return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.trigger = CertificateTrigger.AUTO if self.cleaned_data.get("generate_automatically") else CertificateTrigger.MANUAL
+        if commit:
+            instance.save()
+        return instance
