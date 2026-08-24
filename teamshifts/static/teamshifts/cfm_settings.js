@@ -73,20 +73,80 @@ function initDescriptionPreview() {
 
 document.addEventListener('DOMContentLoaded', function () {
   initDescriptionPreview();
+  initSecretLinkCopy();
+  initCallVisibilityToggles();
+});
+
+function initCallVisibilityToggles() {
   var activeEl = document.getElementById('id_active');
   var showOnMenuEl = document.getElementById('id_show_on_menu');
+  var privateEl = document.getElementById('id_cfm_private');
   if (!activeEl || !showOnMenuEl) return;
+
+  // Hidden input preserves the value when the checkbox is disabled.
+  var hidden = document.createElement('input');
+  hidden.type = 'hidden';
+  hidden.name = showOnMenuEl.name;
+  hidden.value = showOnMenuEl.checked ? 'on' : '';
+  showOnMenuEl.parentNode.insertBefore(hidden, showOnMenuEl);
+
+  showOnMenuEl.addEventListener('change', function () {
+    hidden.value = showOnMenuEl.checked ? 'on' : '';
+  });
+
   function updateShowOnMenu() {
     var row = showOnMenuEl.closest('.form-group') || showOnMenuEl.parentElement;
-    if (!activeEl.checked) {
+    var hasEffect = activeEl.checked && !(privateEl && privateEl.checked);
+    if (!hasEffect) {
       showOnMenuEl.disabled = true;
-      showOnMenuEl.checked = false;
       if (row) row.style.opacity = '0.5';
     } else {
       showOnMenuEl.disabled = false;
       if (row) row.style.opacity = '';
     }
   }
+
   activeEl.addEventListener('change', updateShowOnMenu);
+  if (privateEl) privateEl.addEventListener('change', updateShowOnMenu);
   updateShowOnMenu();
-});
+}
+
+function initSecretLinkCopy() {
+  var button = document.getElementById('cfm-copy-secret-link');
+  var input = document.getElementById('cfm-secret-link-input');
+  if (!button || !input) return;
+
+  var originalIcon = button.querySelector('i');
+  var originalIconClass = originalIcon ? originalIcon.className : 'fa fa-copy';
+  var originalLabel = button.textContent.trim();
+
+  function renderButton(iconClass, label) {
+    while (button.firstChild) {
+      button.removeChild(button.firstChild);
+    }
+    var icon = document.createElement('i');
+    icon.className = iconClass;
+    button.appendChild(icon);
+    button.appendChild(document.createTextNode(' ' + label));
+  }
+
+  button.addEventListener('click', function () {
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+    var done = function () {
+      renderButton('fa fa-check', button.dataset.copiedLabel || gettext('Copied'));
+      window.setTimeout(function () {
+        renderButton(originalIconClass, originalLabel);
+      }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(done, function () {
+        document.execCommand('copy');
+        done();
+      });
+    } else {
+      document.execCommand('copy');
+      done();
+    }
+  });
+}

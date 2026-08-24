@@ -46,6 +46,7 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
             "title",
             "active",
             "show_on_menu",
+            "cfm_private",
             "deadline",
             "description",
         )
@@ -609,6 +610,13 @@ class ShiftForm(forms.ModelForm):
                 duration_seconds = int((end_time - start_time).total_seconds())
                 if duration_seconds % (shift_length * 60) != 0:
                     self.add_error("shift_length_minutes", _("The shift length must divide evenly into the total duration between start and end time."))
+                else:
+                    count = duration_seconds // (shift_length * 60)
+                    if count > 50:
+                        self.add_error(
+                            "shift_length_minutes",
+                            _("The maximum allowed is 50 per action. Please adjust the interval or date range."),
+                        )
         return cleaned_data
 
 

@@ -1,5 +1,6 @@
 import json
 import re
+import secrets
 from datetime import timedelta
 
 import dateutil.parser
@@ -123,6 +124,13 @@ class CFMSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View
 
     def post(self, request, *args, **kwargs):
         cfm = self._get_cfm()
+
+        if request.POST.get("action") == "regenerate_secret":
+            with scope(event=request.event):
+                cfm.regenerate_secret()
+            messages.success(request, _("A new secret link has been generated. The old link no longer works."))
+            return redirect("plugins:teamshifts:cfm_settings", organizer=request.organizer.slug, event=request.event.slug)
+
         form = CallForTeamMembersSettingsForm(request.POST, instance=cfm, locales=request.event.settings.locales, event=request.event)
         if form.is_valid():
             with scope(event=request.event):
@@ -897,7 +905,10 @@ class PublicApplyView(FormView):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
         if not request.user.is_authenticated:
-            login_url = reverse("eventyay_common:auth.login")
+            login_url = reverse(
+                "cfp:event.login",
+                kwargs={"organizer": request.organizer.slug, "event": request.event.slug},
+            )
             return redirect(f"{login_url}?next={request.get_full_path()}")
         self.event = request.event
         self.organizer = request.organizer
@@ -906,6 +917,12 @@ class PublicApplyView(FormView):
                 self.cfm = self.event.call_for_team_members
             except CallForTeamMembers.DoesNotExist:
                 self.cfm = None
+        if self.cfm and self.cfm.cfm_private:
+            if not getattr(request, "_cfm_secret_verified", False):
+                with scope(event=self.event):
+                    has_application = TeamMemberApplication.objects.filter(event=self.event, user=request.user).exists()
+                if not has_application:
+                    raise Http404
         return super().dispatch(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
@@ -965,7 +982,10 @@ class PublicApplyThanksView(TemplateView):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
         if not request.user.is_authenticated:
-            login_url = reverse("eventyay_common:auth.login")
+            login_url = reverse(
+                "cfp:event.login",
+                kwargs={"organizer": request.organizer.slug, "event": request.event.slug},
+            )
             return redirect(f"{login_url}?next={request.get_full_path()}")
         self.event = request.event
         return super().dispatch(request, *args, **kwargs)
@@ -974,6 +994,23 @@ class PublicApplyThanksView(TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["event"] = self.event
         return ctx
+
+
+class PublicApplySecretView(PublicApplyView):
+    def dispatch(self, request, *args, **kwargs):
+        if "teamshifts" not in request.event.get_plugins():
+            raise Http404
+        event = request.event
+        with scope(event=event):
+            try:
+                cfm = event.call_for_team_members
+            except CallForTeamMembers.DoesNotExist:
+                raise Http404 from None
+        secret = kwargs.get("secret", "")
+        if not cfm.active or not cfm.cfm_private or not secret or not secrets.compare_digest(secret, cfm.cfm_secret or ""):
+            raise Http404
+        request._cfm_secret_verified = True
+        return super().dispatch(request, *args, **kwargs)
 
 
 class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, FormView):

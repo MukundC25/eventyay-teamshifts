@@ -137,3 +137,24 @@ label .optional {
 #roles-table.js-formset-enabled .delete-checkbox {
     display: none;
 }
+
+
+.call-secret-panel {
+  margin-top: 20px;
+}
+
+.call-secret-input input[readonly] {
+  background-color: #fff;
+  font-family: monospace;
+}
+
+.call-secret-regenerate {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.call-secret-hint {
+  font-size: 12px;
+}
