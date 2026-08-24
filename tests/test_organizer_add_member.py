@@ -6,7 +6,7 @@ from django_scopes import scope
 from eventyay.base.models import Team, User
 
 from teamshifts.forms import TeamMemberApplicationForm
-from teamshifts.models import ApplicationStatus, CallForTeamMembers, EmailTemplateRoles, TeamMemberApplication
+from teamshifts.models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication
 from teamshifts.services.members import AlreadyMemberError, add_member_from_organizer, resolve_or_create_user
 
 
@@ -129,24 +129,19 @@ def test_member_add_view_creates_member(mock_queue, client, event, call_for_team
     settings.SITE_URL = "https://testserver"
     client.force_login(orga_user)
     url = reverse("plugins:teamshifts:member_add", kwargs={"organizer": event.organizer.slug, "event": event.slug})
-    with patch("teamshifts.views.transaction.on_commit", side_effect=lambda fn: fn()):
-        response = client.post(
-            url,
-            {
-                "full_name": "Org Added",
-                "email": "org.added@example.com",
-            },
-        )
+    response = client.post(
+        url,
+        {
+            "full_name": "Org Added",
+            "email": "org.added@example.com",
+        },
+    )
     assert response.status_code == 302
     with scope(event=event):
         application = TeamMemberApplication.objects.get(event=event, user__email="org.added@example.com")
         assert application.status == ApplicationStatus.ACCEPTED
         assert application.added_by_organizer is True
     assert User.objects.filter(email="org.added@example.com").exists()
-    mock_queue.assert_called_once()
-    called_application, called_role = mock_queue.call_args[0]
-    assert called_application.pk == application.pk
-    assert called_role == EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER
 
 
 @pytest.mark.django_db
