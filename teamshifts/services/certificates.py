@@ -46,7 +46,12 @@ def qualifying_assignments(application: TeamMemberApplication):
 
 
 def completed_shift_count(application: TeamMemberApplication) -> int:
-    return sum(1 for assignment in qualifying_assignments(application) if assignment.ended_at)
+    with scope(event=application.event):
+        return ShiftAssignment.objects.filter(
+            team_member=application.user,
+            shift__event=application.event,
+            ended_at__isnull=False,
+        ).count()
 
 
 def application_context(application: TeamMemberApplication) -> dict:
@@ -83,7 +88,7 @@ def application_context(application: TeamMemberApplication) -> dict:
         "event_date_to": date_to,
         "event_location": location,
         "organizer_name": str(event.organizer.name),
-        "completed_shift_count": str(completed_shift_count(application)),
+        "completed_shift_count": str(sum(1 for a in assignments if a.ended_at)),
         "assigned_shift_count": str(len(assignments)),
         "roles": ", ".join(roles),
         "issued_date": gettext("Date Issued: %(date)s") % {"date": date_format(issued, "DATE_FORMAT")},

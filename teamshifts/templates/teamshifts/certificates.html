@@ -133,7 +133,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="7">{% trans "No accepted team members yet." %}</td>
+                            <td colspan="{% if can_view_email %}7{% else %}6{% endif %}">{% trans "No accepted team members yet." %}</td>
                         </tr>
                     {% endfor %}
                 </tbody>

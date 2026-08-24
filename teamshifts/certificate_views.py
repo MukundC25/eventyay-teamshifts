@@ -211,6 +211,8 @@ class CertificateEditorView(PluginActiveMixin, BaseEditorView):
             return
         if f.file.name.endswith("empty.pdf"):
             return
+        if self.certificate_settings.background:
+            self.certificate_settings.background.delete(save=False)
         self.certificate_settings.background.save("background.pdf", f.file)
 
     def _open_saved_background_pdf(self):
@@ -220,6 +222,8 @@ class CertificateEditorView(PluginActiveMixin, BaseEditorView):
 
     def process_upload(self):
         uploaded = self.request.FILES.get("background")
+        if not uploaded:
+            return _("No file uploaded."), None
         error = False
         if uploaded.size > self.maxfilesize:
             error = _("The uploaded file is too large.")
