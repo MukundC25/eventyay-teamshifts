@@ -36,7 +36,7 @@ def format_datetime_local(dt):
     return f"{dt:%Y-%m-%dT%H:%M}"
 
 
-EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name"]
+EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name", "event_dates", "event_location", "shift_schedule_url"]
 
 
 class CallForTeamMembersSettingsForm(forms.ModelForm):

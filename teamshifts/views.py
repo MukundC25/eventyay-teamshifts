@@ -420,6 +420,9 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                     ("{full_name}", _("The applicant's full name")),
                     ("{event_name}", _("The event's name")),
                     ("{role_name}", _("The role applied for")),
+                    ("{event_dates}", _("The event's date range")),
+                    ("{event_location}", _("The event's location")),
+                    ("{shift_schedule_url}", _("Link to the shift schedule")),
                 ],
             },
         )
@@ -458,6 +461,9 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                     ("{full_name}", _("The applicant's full name")),
                     ("{event_name}", _("The event's name")),
                     ("{role_name}", _("The role applied for")),
+                    ("{event_dates}", _("The event's date range")),
+                    ("{event_location}", _("The event's location")),
+                    ("{shift_schedule_url}", _("Link to the shift schedule")),
                 ],
             },
         )
@@ -484,6 +490,9 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "full_name": "Jane Doe",
                 "event_name": str(event.name),
                 "role_name": "Volunteer",
+                "event_dates": event.get_date_range_display(),
+                "event_location": str(event.location) if event.location else "",
+                "shift_schedule_url": "https://example.com/my-event/shifts/",
             },
         )
 
