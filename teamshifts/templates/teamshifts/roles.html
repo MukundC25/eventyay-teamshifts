@@ -4,16 +4,12 @@
 
 {% block title %}{% trans "Team Roles" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
+{% block teamshifts_header %}
         <h1>{% trans "Team Roles" %}</h1>
-      </div>
-    </div>
-  </nav>
+{% endblock %}
 
-  {% if not roles %}
+{% block teamshifts_content %}
+    {% if not roles %}
     <div class='empty-collection'>
       <p>{% blocktrans trimmed %}No roles have been defined for this event yet.{% endblocktrans %}</p>
     </div>

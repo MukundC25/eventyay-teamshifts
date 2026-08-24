@@ -7,7 +7,7 @@ import teamshifts.models
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0052_admission_validity_fields"),
-        ("teamshifts", "0016_shiftassignment_role"),
+        ("teamshifts", "0017_cfm_private_secret_link"),
     ]
 
     operations = [

@@ -8,9 +8,11 @@
   <script type='module' src='{% static "teamshifts/shift_create.js" %}'></script>
 {% endblock %}
 
-{% block content %}
+{% block teamshifts_header %}
   <h1>{% trans "Create Shift(s)" %}</h1>
+{% endblock %}
 
+{% block teamshifts_content %}
   {% if not has_locations %}
     <div class='alert alert-warning'>
       {% trans "No locations defined yet, add locations first." %}

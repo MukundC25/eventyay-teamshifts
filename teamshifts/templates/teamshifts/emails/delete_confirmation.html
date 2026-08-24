@@ -3,16 +3,12 @@
 
 {% block title %}{% trans "Delete email" %} :: {{ request.event.name }}{% endblock %}
 
-{% block content %}
-  <nav id='event-nav' class='header-nav'>
-    <div class='navigation'>
-      <div class='navigation-title'>
+{% block teamshifts_header %}
         <h1>{% trans "Delete email" %}</h1>
-      </div>
-    </div>
-  </nav>
+{% endblock %}
 
-  <h4>{% trans "Do you really want to delete this email?" %}</h4>
+{% block teamshifts_content %}
+    <h4>{% trans "Do you really want to delete this email?" %}</h4>
   <p><strong>{% trans "Subject" %}:</strong> {{ queue.subject }}</p>
 
   <form method='post' class='submit-group'>
