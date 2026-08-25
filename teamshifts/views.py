@@ -1772,19 +1772,30 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
         with scope(event=event):
             shift = get_object_or_404(Shift, pk=kwargs["pk"], event=event)
 
-            try:
-                if "start" in data:
+            if data.get("start"):
+                try:
                     shift.start_time = dateutil.parser.parse(data["start"])
-                if "end" in data:
-                    shift.end_time = dateutil.parser.parse(data["end"])
-            except (TypeError, ValueError, OverflowError):
-                return HttpResponseBadRequest("Invalid date format for 'start'/'end'.")
+                    if data.get("end"):
+                        shift.end_time = dateutil.parser.parse(data["end"])
+                    elif shift.start_time and shift.end_time:
+                        duration = (shift.end_time - shift.start_time).total_seconds() / 60
+                        shift.end_time = shift.start_time + timedelta(minutes=duration)
+                    else:
+                        shift.end_time = shift.start_time + timedelta(minutes=data.get("duration", 60) or 60)
+                except (TypeError, ValueError, OverflowError):
+                    return HttpResponseBadRequest("Invalid date format for 'start'/'end'.")
 
-            if "room" in data:
-                room_id = data["room"]
-                if isinstance(room_id, dict):
-                    room_id = room_id.get("id")
-                shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
+                if "room" in data:
+                    room_id = data["room"]
+                    if isinstance(room_id, dict):
+                        room_id = room_id.get("id")
+                    shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
+
+                if shift.start_time and shift.end_time and shift.end_time <= shift.start_time:
+                    return HttpResponseBadRequest("'end' must be after 'start'.")
+            else:
+                shift.location = None
+
             if "title" in data:
                 title_val = data["title"]
                 if isinstance(title_val, dict):
@@ -1793,9 +1804,6 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                     shift.name = title_val
             if "description" in data:
                 shift.description = data["description"]
-
-            if shift.start_time and shift.end_time and shift.end_time <= shift.start_time:
-                return HttpResponseBadRequest("'end' must be after 'start'.")
 
             shift.save()
 
@@ -2040,7 +2048,9 @@ def _shift_talk_payload(shift):
 
 
 def _public_shifts_queryset(event):
-    return event.shifts.all().prefetch_related(
+    return event.shifts.filter(
+        location__isnull=False,
+    ).prefetch_related(
         "role_assignments__role",
         "assignments__team_member",
         "assignments__role",
