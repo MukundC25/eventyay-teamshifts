@@ -115,7 +115,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "40.00",
-        "bottom": "74.25",
+        "bottom": "73.00",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -129,7 +129,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "30.00",
-        "bottom": "65.25",
+        "bottom": "63.50",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
