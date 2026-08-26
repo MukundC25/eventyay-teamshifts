@@ -51,7 +51,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "imagearea",
         "left": "119.00",
-        "bottom": "158.00",
+        "bottom": "152.25",
         "width": "100.00",
         "height": "22.00",
         "content": "event_logo",
@@ -59,7 +59,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "40.00",
-        "bottom": "147.00",
+        "bottom": "141.25",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -73,7 +73,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "10.00",
-        "bottom": "124.00",
+        "bottom": "118.25",
         "fontsize": "30.0",
         "color": NAVY,
         "fontfamily": "Open Sans",
@@ -87,7 +87,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "40.00",
-        "bottom": "114.00",
+        "bottom": "108.25",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -101,7 +101,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "40.00",
-        "bottom": "96.00",
+        "bottom": "90.25",
         "fontsize": "24.0",
         "color": NAVY,
         "fontfamily": "Open Sans",
@@ -115,7 +115,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "40.00",
-        "bottom": "80.00",
+        "bottom": "74.25",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -129,7 +129,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "30.00",
-        "bottom": "71.00",
+        "bottom": "65.25",
         "fontsize": "13.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -143,7 +143,7 @@ DEFAULT_CERTIFICATE_LAYOUT = [
     {
         "type": "textarea",
         "left": "100.00",
-        "bottom": "22.00",
+        "bottom": "16.25",
         "fontsize": "11.0",
         "color": [107, 107, 107, 1],
         "fontfamily": "Open Sans",
@@ -342,7 +342,7 @@ class CertificateRenderer(Renderer):
         if event_color:
             color_rgba = hex_to_rgba(event_color)
             for obj in self.layout:
-                if obj.get("type") == "textarea" and obj.get("content") == "certificate_title":
+                if obj.get("type") == "textarea" and obj.get("content") in ("certificate_title", "member_name"):
                     obj["color"] = color_rgba
 
         allowed = {"textarea", "poweredby", "imagearea"}
