@@ -138,6 +138,11 @@ urlpatterns = [
         name="members",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/members/add/",
+        views.MemberCreateView.as_view(),
+        name="member_add",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/members/<int:pk>/toggle-arrived/",
         views.MemberArrivedToggleView.as_view(),
         name="member_toggle_arrived",

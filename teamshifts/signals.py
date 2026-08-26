@@ -14,6 +14,7 @@ from eventyay.base.models.organizer import Team
 from eventyay.base.signals import register_mail_placeholders
 from eventyay.common.signals import periodic_task
 from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
+from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
 
 from .models import CallForTeamMembers, TeamRole, TeamShiftsEmailQueue
@@ -103,6 +104,24 @@ def teamshifts_mail_placeholders(sender, **kwargs):
             ["event"],
             lambda event: str(event.name),
             lambda event: str(event.name),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "event_dates",
+            ["event"],
+            lambda event: event.get_date_range_display(),
+            lambda event: event.get_date_range_display(),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "event_location",
+            ["event"],
+            lambda event: str(event.location) if event.location else "",
+            lambda event: str(event.location) if event.location else _("(no location set)"),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "shift_schedule_url",
+            ["event"],
+            lambda event: build_absolute_uri(event, "presale:event.index"),
+            lambda event: "https://example.com/my-event/",
         ),
     ]
 

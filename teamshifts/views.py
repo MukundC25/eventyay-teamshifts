@@ -64,6 +64,7 @@ from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
+from .services.members import AlreadyMemberError, add_member_from_organizer
 from .tasks import send_queued_email
 
 
@@ -86,7 +87,9 @@ class TeamShiftsDashboard(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
             ctx["pending_count"] = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.PENDING).count()
             ctx["accepted_count"] = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).count()
             ctx["shift_count"] = Shift.objects.filter(event=event).count()
-            ctx["recent_applications"] = list(TeamMemberApplication.objects.filter(event=event).select_related("user").order_by("-created_at")[:5])
+            ctx["recent_applications"] = list(
+                TeamMemberApplication.objects.filter(event=event, added_by_organizer=False).select_related("user").order_by("-created_at")[:5]
+            )
             ctx["accepted_members"] = list(
                 TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user").order_by("-updated_at")[:8]
             )
@@ -417,6 +420,9 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                     ("{full_name}", _("The applicant's full name")),
                     ("{event_name}", _("The event's name")),
                     ("{role_name}", _("The role applied for")),
+                    ("{event_dates}", _("The event's date range")),
+                    ("{event_location}", _("The event's location")),
+                    ("{shift_schedule_url}", _("Link to the shift schedule")),
                 ],
             },
         )
@@ -455,6 +461,9 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                     ("{full_name}", _("The applicant's full name")),
                     ("{event_name}", _("The event's name")),
                     ("{role_name}", _("The role applied for")),
+                    ("{event_dates}", _("The event's date range")),
+                    ("{event_location}", _("The event's location")),
+                    ("{shift_schedule_url}", _("Link to the shift schedule")),
                 ],
             },
         )
@@ -481,6 +490,9 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "full_name": "Jane Doe",
                 "event_name": str(event.name),
                 "role_name": "Volunteer",
+                "event_dates": event.get_date_range_display(),
+                "event_location": str(event.location) if event.location else "",
+                "shift_schedule_url": "https://example.com/my-event/shifts/",
             },
         )
 
@@ -684,7 +696,12 @@ class ApplicationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
     def get_queryset(self):
         event = self.request.event
         with scope(event=event):
-            qs = TeamMemberApplication.objects.filter(event=event).select_related("user").prefetch_related("answers__question").order_by("-created_at")
+            qs = (
+                TeamMemberApplication.objects.filter(event=event, added_by_organizer=False)
+                .select_related("user")
+                .prefetch_related("answers__question")
+                .order_by("-created_at")
+            )
             status_filter = self.request.GET.get("status")
 
             search = self.request.GET.get("q", "").strip()
@@ -1575,8 +1592,47 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
 
         ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
+        ctx["can_add_member"] = has_teamshifts_permission(
+            self.request.user,
+            self.request.organizer,
+            self.request.event,
+            "can_teamshifts_manage_applicants",
+            request=self.request,
+        )
         return ctx
-        return ctx
+
+
+class MemberCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, FormView):
+    permission = "can_teamshifts_manage_applicants"
+    template_name = "teamshifts/member_add.html"
+    form_class = TeamMemberApplicationForm
+
+    def _get_cfm(self):
+        with scope(event=self.request.event):
+            cfm, _created = CallForTeamMembers.objects.get_or_create(event=self.request.event)
+        return cfm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["event"] = self.request.event
+        kwargs["cfm"] = self._get_cfm()
+        kwargs["organizer_mode"] = True
+        return kwargs
+
+    def form_valid(self, form):
+        try:
+            application = add_member_from_organizer(event=self.request.event, form=form)
+        except AlreadyMemberError:
+            form.add_error("email", _("This person is already an accepted team member for this event."))
+            return self.form_invalid(form)
+
+        transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER))
+        messages.success(self.request, _("Team member added."))
+        return redirect(
+            "plugins:teamshifts:members",
+            organizer=self.request.organizer.slug,
+            event=self.request.event.slug,
+        )
 
 
 class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):

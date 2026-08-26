@@ -28,7 +28,9 @@
             <h2 class="teamshifts-detail-title">
                 {% trans "Application:" %} {{ application.user.get_full_name }}
             </h2>
-            {% if can_manage_applicants %}
+            {% if application.added_by_organizer %}
+            <span class="label label-info">{% trans "Added by organizer" %}</span>
+            {% elif can_manage_applicants %}
             <form action="{% url 'plugins:teamshifts:application_status' organizer=request.organizer.slug event=request.event.slug pk=application.pk %}?next={{ request.path|urlencode }}"
                   method="post" class="teamshifts-inline-form" id="detail-status-form">
                 {% csrf_token %}
@@ -86,6 +88,12 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% if application.added_by_organizer %}
+                <tr>
+                    <th>{% trans "Added on" %}</th>
+                    <td>{{ application.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
+                </tr>
+                {% else %}
                 <tr>
                     <th>{% trans "Status" %}</th>
                     <td>
@@ -102,6 +110,7 @@
                     <th>{% trans "Applied on" %}</th>
                     <td>{{ application.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
                 </tr>
+                {% endif %}
                 {% if application.availability_notes %}
                 <tr>
                     <th>{% trans "Availability notes" %}</th>

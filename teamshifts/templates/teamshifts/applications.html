@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block teamshifts_content %}
-    <div class="teamshifts-filter-bar">
+    <div class="teamshifts-filter-bar clearfix">
         <form method="get" class="form-inline pull-left">
         <div class="form-group">
             <input type="text" name="q" value="{{ search|default:'' }}" class="form-control" placeholder="{% trans 'Search by name or email' %}">
