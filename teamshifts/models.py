@@ -110,6 +110,12 @@ class CallForTeamMembers(models.Model):
 
     field_order = models.JSONField(default=list, verbose_name=_("Field order"))
 
+    shift_schedule_published = models.BooleanField(
+        default=False,
+        verbose_name=_("Shift schedule published"),
+        help_text=_("When enabled, accepted team members can view the shift schedule. Changes are live after the first publish."),
+    )
+
     objects = ScopedManager(event="event")
 
     class Meta:

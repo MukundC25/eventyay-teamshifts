@@ -17,7 +17,7 @@ from eventyay.control.signals import event_dashboard_components, event_dashboard
 from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import CallForTeamMembers, TeamRole, TeamShiftsEmailQueue
+from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication, TeamRole, TeamShiftsEmailQueue
 from .permissions import has_any_teamshifts_permission
 from .tasks import send_queued_email
 
@@ -81,6 +81,33 @@ def teamshifts_header_nav_tab(sender, request=None, **kwargs):
         apply_url,
         "active" if is_active else "",
         tab_title,
+    )
+
+
+@receiver(header_nav_tabs, dispatch_uid="teamshifts_public_schedule_nav_tab")
+def teamshifts_public_schedule_nav_tab(sender, request=None, **kwargs):
+    if request is None or not request.user.is_authenticated:
+        return ""
+    from django_scopes import scope as _scope
+
+    with _scope(event=sender):
+        is_accepted = TeamMemberApplication.objects.filter(
+            event=sender,
+            user=request.user,
+            status=ApplicationStatus.ACCEPTED,
+        ).exists()
+    if not is_accepted:
+        return ""
+    schedule_url = reverse(
+        "plugins:teamshifts:public_shift_schedule",
+        kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
+    )
+    is_active = request is not None and "/teamshifts/shifts/" in getattr(request, "path_info", "")
+    return format_html(
+        '<a href="{}" class="header-tab {}"><i class="fa fa-calendar-check-o"></i> {}</a>',
+        schedule_url,
+        "active" if is_active else "",
+        _("Shift Schedule"),
     )
 
 
