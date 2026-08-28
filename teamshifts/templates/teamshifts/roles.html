@@ -1,6 +1,7 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
+{% load rich_text %}
 
 {% block title %}{% trans "Team Roles" %} :: {{ request.event.name }}{% endblock %}
 
@@ -36,7 +37,7 @@
                   <span class='label label-success'>{% trans "Open" %}</span>
                 {% endif %}
               </td>
-              <td class='text-muted'>{{ role.description|default:"—" }}</td>
+              <td class='text-muted'>{% if role.description %}{{ role.description|rich_text }}{% else %}—{% endif %}</td>
               <td></td>
               <td class='text-right flip'>
                 <a href='{% url "plugins:teamshifts:role_edit" organizer=request.organizer.slug event=request.event.slug pk=role.pk %}'
