@@ -39,7 +39,7 @@ def format_datetime_local(dt):
     return f"{dt:%Y-%m-%dT%H:%M}"
 
 
-EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name"]
+EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name", "event_dates", "event_location", "shift_schedule_url"]
 
 
 class CallForTeamMembersSettingsForm(forms.ModelForm):
@@ -148,11 +148,12 @@ class TeamApplicationQuestionForm(forms.ModelForm):
 class TeamMemberApplicationForm(forms.Form):
     QUESTION_FIELD_PREFIX = "question_"
 
-    def __init__(self, *args, event=None, user=None, cfm=None, **kwargs):
+    def __init__(self, *args, event=None, user=None, cfm=None, organizer_mode=False, **kwargs):
         super().__init__(*args, **kwargs)
         self._event = event
         self._questions: list[TeamApplicationQuestion] = []
         self._field_order_keys: list = []
+        self._organizer_mode = organizer_mode
 
         if user is not None:
             self._user = user
@@ -178,9 +179,21 @@ class TeamMemberApplicationForm(forms.Form):
             if q.pk not in present_question_pks:
                 raw_order.append(q.pk)
 
+        # Organizers must always be able to enter email (and usually a name) when adding a member.
+        if organizer_mode:
+            if "email" not in raw_order:
+                raw_order.insert(0, "email")
+            if "full_name" not in {i for i in raw_order if isinstance(i, str)}:
+                email_idx = raw_order.index("email") if "email" in raw_order else 0
+                raw_order.insert(email_idx, "full_name")
+
         for item in raw_order:
             if isinstance(item, str):
                 ask_state = cfm.get_ask_state(item) if cfm else AskChoices.OPTIONAL
+                if item == "email" and organizer_mode:
+                    ask_state = AskChoices.REQUIRED
+                elif item == "full_name" and organizer_mode and ask_state == AskChoices.DO_NOT_ASK:
+                    ask_state = AskChoices.OPTIONAL
                 if ask_state == AskChoices.DO_NOT_ASK:
                     continue
                 required = ask_state == AskChoices.REQUIRED
@@ -196,12 +209,20 @@ class TeamMemberApplicationForm(forms.Form):
                         field.initial = user.fullname or ""
                     self.fields["full_name"] = field
                 elif item == "email":
-                    field = forms.EmailField(
-                        label=_("Email address"),
-                        required=True,
-                        widget=forms.EmailInput(attrs={"class": "form-control", "readonly": True}),
-                        help_text=_("To change your email address, visit your account settings."),
-                    )
+                    if organizer_mode:
+                        field = forms.EmailField(
+                            label=_("Email address"),
+                            required=True,
+                            widget=forms.EmailInput(attrs={"class": "form-control"}),
+                            help_text=_("If no account exists for this email, one will be created."),
+                        )
+                    else:
+                        field = forms.EmailField(
+                            label=_("Email address"),
+                            required=True,
+                            widget=forms.EmailInput(attrs={"class": "form-control", "readonly": True}),
+                            help_text=_("To change your email address, visit your account settings."),
+                        )
                     if user is not None:
                         field.initial = user.email
                     self.fields["email"] = field
@@ -593,6 +614,13 @@ class ShiftForm(forms.ModelForm):
                 duration_seconds = int((end_time - start_time).total_seconds())
                 if duration_seconds % (shift_length * 60) != 0:
                     self.add_error("shift_length_minutes", _("The shift length must divide evenly into the total duration between start and end time."))
+                else:
+                    count = duration_seconds // (shift_length * 60)
+                    if count > 50:
+                        self.add_error(
+                            "shift_length_minutes",
+                            _("The maximum allowed is 50 per action. Please adjust the interval or date range."),
+                        )
         return cleaned_data
 
 

@@ -19,6 +19,31 @@ event_patterns = [
         views.PublicApplySecretView.as_view(),
         name="apply_secret",
     ),
+    path(
+        "teamshifts/shifts/",
+        views.PublicShiftScheduleView.as_view(),
+        name="public_shift_schedule",
+    ),
+    path(
+        "teamshifts/shifts/api/",
+        views.PublicShiftScheduleAPIView.as_view(),
+        name="public_shift_schedule_api",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/",
+        views.ShiftDetailView.as_view(),
+        name="public_shift_detail",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/claim/",
+        views.ShiftClaimView.as_view(),
+        name="public_shift_claim",
+    ),
+    path(
+        "teamshifts/shifts/<int:pk>/withdraw/",
+        views.ShiftWithdrawView.as_view(),
+        name="public_shift_withdraw",
+    ),
 ]
 
 urlpatterns = [
@@ -138,6 +163,11 @@ urlpatterns = [
         name="members",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/members/add/",
+        views.MemberCreateView.as_view(),
+        name="member_add",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/members/<int:pk>/toggle-arrived/",
         views.MemberArrivedToggleView.as_view(),
         name="member_toggle_arrived",
@@ -231,6 +261,11 @@ urlpatterns = [
         "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/grid/",
         views.ShiftScheduleGridEditorView.as_view(),
         name="schedule_grid",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/schedule/toggle-publish/",
+        views.ShiftScheduleTogglePublishView.as_view(),
+        name="schedule_toggle_publish",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/<int:pk>/send/",

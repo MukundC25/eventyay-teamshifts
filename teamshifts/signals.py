@@ -14,9 +14,10 @@ from eventyay.base.models.organizer import Team
 from eventyay.base.signals import register_mail_placeholders
 from eventyay.common.signals import periodic_task
 from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
+from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import CallForTeamMembers, TeamRole, TeamShiftsEmailQueue
+from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication, TeamRole, TeamShiftsEmailQueue
 from .permissions import has_any_teamshifts_permission
 from .tasks import send_queued_email
 
@@ -83,6 +84,33 @@ def teamshifts_header_nav_tab(sender, request=None, **kwargs):
     )
 
 
+@receiver(header_nav_tabs, dispatch_uid="teamshifts_public_schedule_nav_tab")
+def teamshifts_public_schedule_nav_tab(sender, request=None, **kwargs):
+    if request is None or not request.user.is_authenticated:
+        return ""
+    from django_scopes import scope as _scope
+
+    with _scope(event=sender):
+        is_accepted = TeamMemberApplication.objects.filter(
+            event=sender,
+            user=request.user,
+            status=ApplicationStatus.ACCEPTED,
+        ).exists()
+    if not is_accepted:
+        return ""
+    schedule_url = reverse(
+        "plugins:teamshifts:public_shift_schedule",
+        kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
+    )
+    is_active = request is not None and "/teamshifts/shifts/" in getattr(request, "path_info", "")
+    return format_html(
+        '<a href="{}" class="header-tab {}"><i class="fa fa-calendar-check-o"></i> {}</a>',
+        schedule_url,
+        "active" if is_active else "",
+        _("Shift Schedule"),
+    )
+
+
 @receiver(register_mail_placeholders, dispatch_uid="teamshifts_mail_placeholders")
 def teamshifts_mail_placeholders(sender, **kwargs):
     return [
@@ -103,6 +131,24 @@ def teamshifts_mail_placeholders(sender, **kwargs):
             ["event"],
             lambda event: str(event.name),
             lambda event: str(event.name),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "event_dates",
+            ["event"],
+            lambda event: event.get_date_range_display(),
+            lambda event: event.get_date_range_display(),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "event_location",
+            ["event"],
+            lambda event: str(event.location) if event.location else "",
+            lambda event: str(event.location) if event.location else _("(no location set)"),
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "shift_schedule_url",
+            ["event"],
+            lambda event: build_absolute_uri(event, "presale:event.index"),
+            lambda event: "https://example.com/my-event/",
         ),
     ]
 

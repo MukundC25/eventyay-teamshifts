@@ -38,6 +38,21 @@ REJECTED_TEXT = LazyI18nString.from_gettext(
     )
 )
 
+MEMBER_ADDED_BY_ORGANIZER_SUBJECT = LazyI18nString.from_gettext(_("You have been added as a volunteer — {event_name}"))
+MEMBER_ADDED_BY_ORGANIZER_TEXT = LazyI18nString.from_gettext(
+    _(
+        "Hi {full_name},\n\n"
+        "You have been added as a volunteer for {event_name} by the event organiser.\n\n"
+        "Event dates: {event_dates}\n"
+        "Event location: {event_location}\n\n"
+        "You can now claim your shifts here:\n"
+        "{shift_schedule_url}\n\n"
+        "If you have any questions, contact the organiser directly.\n\n"
+        "See you at the event!\n"
+        "The {event_name} team"
+    )
+)
+
 
 def get_default_template(role: str) -> tuple[LazyI18nString, LazyI18nString]:
     from ..models import EmailTemplateRoles
@@ -46,5 +61,6 @@ def get_default_template(role: str) -> tuple[LazyI18nString, LazyI18nString]:
         EmailTemplateRoles.APPLICATION_RECEIVED: (RECEIVED_SUBJECT, RECEIVED_TEXT),
         EmailTemplateRoles.APPLICATION_ACCEPTED: (ACCEPTED_SUBJECT, ACCEPTED_TEXT),
         EmailTemplateRoles.APPLICATION_REJECTED: (REJECTED_SUBJECT, REJECTED_TEXT),
+        EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER: (MEMBER_ADDED_BY_ORGANIZER_SUBJECT, MEMBER_ADDED_BY_ORGANIZER_TEXT),
     }
     return mapping[role]
