@@ -1,6 +1,7 @@
 {% extends "pretixpresale/event/base.html" %}
 {% load i18n %}
 {% load static %}
+{% load rich_text %}
 
 {% block custom_header %}
   {{ block.super }}
@@ -33,7 +34,7 @@
         {% if shift.description %}
         <tr>
           <th class="ts-detail-label">{% trans "Description" %}</th>
-          <td>{{ shift.description }}</td>
+          <td>{{ shift.description|rich_text }}</td>
         </tr>
         {% endif %}
       </tbody>

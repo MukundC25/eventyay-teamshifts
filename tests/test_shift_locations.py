@@ -164,3 +164,18 @@ def test_location_delete_other_event_returns_404(orga_client, event, user, setti
     )
     response = orga_client.post(url)
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_location_list_renders_tiptap_html_description(orga_client, event):
+    with scope(event=event):
+        loc = ShiftLocation.objects.create(
+            event=event,
+            name="Tiptap Hall",
+            description="<p>Assist attendees with <strong>check-in</strong>.</p>",
+        )
+    url = reverse("plugins:teamshifts:locations", kwargs={"organizer": event.organizer.slug, "event": event.slug})
+    response = orga_client.get(url)
+    assert response.status_code == 200
+    assert b"&lt;p&gt;" not in response.content
+    assert b"<strong>check-in</strong>" in response.content
