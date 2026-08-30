@@ -1,7 +1,9 @@
+import re
 from zoneinfo import ZoneInfo
 
 from django import forms
 from django.utils import timezone
+from django.utils.html import escape as html_escape
 from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
@@ -37,6 +39,41 @@ def format_datetime_local(dt):
 
 
 EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name", "event_dates", "event_location", "shift_schedule_url"]
+
+_BLOCK_TAG_RE = re.compile(r"^\s*<(p|ul|ol|blockquote|div|h[1-6])[\s>]", re.IGNORECASE)
+
+
+def plain_text_to_html(text: str) -> str:
+    """Convert plain text with ``\\n`` line separators into ``<p>`` blocks.
+
+    If the text already starts with a block-level HTML tag it is returned
+    unchanged so that content previously saved from the Tiptap editor is
+    not double-wrapped.
+    """
+    if not text or _BLOCK_TAG_RE.match(text):
+        return text
+    paragraphs = re.split(r"\n{2,}", text)
+    parts = []
+    for para in paragraphs:
+        stripped = para.strip()
+        if stripped:
+            inner = html_escape(stripped).replace("\n", "<br>")
+            parts.append(f"<p>{inner}</p>")
+    return "".join(parts) if parts else text
+
+
+class _HtmlNormalizingEmailWidget(I18nEmailEditorWidget):
+    """I18nEmailEditorWidget that converts plain-text values to ``<p>`` HTML.
+
+    The Tiptap editor treats raw text with ``\\n`` as whitespace and collapses
+    it into a single paragraph.  This subclass ensures the textarea always
+    contains block-level HTML so that line breaks survive the round-trip
+    through the editor.
+    """
+
+    def decompress(self, value):
+        values = super().decompress(value)
+        return [plain_text_to_html(v) if v else v for v in values]
 
 
 class CallForTeamMembersSettingsForm(forms.ModelForm):
@@ -384,7 +421,7 @@ class EmailTemplateForm(forms.ModelForm):
         self.fields["body"].required = False
         if locales:
             self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
-            self.fields["body"].widget = I18nEmailEditorWidget(
+            self.fields["body"].widget = _HtmlNormalizingEmailWidget(
                 locales=locales,
                 field=self.fields["body"],
                 placeholders=EMAIL_PLACEHOLDERS,
@@ -407,7 +444,7 @@ class CustomEmailTemplateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if locales:
             self.fields["subject"].widget = I18nTextInput(locales=locales, field=self.fields["subject"])
-            self.fields["body"].widget = I18nEmailEditorWidget(
+            self.fields["body"].widget = _HtmlNormalizingEmailWidget(
                 locales=locales,
                 field=self.fields["body"],
                 placeholders=EMAIL_PLACEHOLDERS,
@@ -430,7 +467,7 @@ class EmailComposeForm(forms.Form):
         )
         self.fields["message"] = I18nFormField(
             label=_("Message"),
-            widget=I18nEmailEditorWidget,
+            widget=_HtmlNormalizingEmailWidget,
             required=True,
             locales=locales,
             widget_kwargs={
@@ -481,7 +518,7 @@ class EmailQueueEditForm(forms.ModelForm):
         self._event = event
         if event is not None:
             locales = list(event.settings.get("locales") or [event.settings.locale])
-            self.fields["message"].widget = I18nEmailEditorWidget(
+            self.fields["message"].widget = _HtmlNormalizingEmailWidget(
                 locales=locales,
                 field=self.fields["message"],
                 placeholders=EMAIL_PLACEHOLDERS,
