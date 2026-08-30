@@ -96,7 +96,11 @@ def application_context(application: TeamMemberApplication) -> dict:
     }
 
 
-def member_qualifies(application: TeamMemberApplication, settings: CertificateSettings | None = None) -> bool:
+def member_qualifies(
+    application: TeamMemberApplication,
+    settings: CertificateSettings | None = None,
+    completed_count: int | None = None,
+) -> bool:
     if application.status != ApplicationStatus.ACCEPTED:
         return False
     settings = settings or get_certificate_settings(application.event)
@@ -104,7 +108,8 @@ def member_qualifies(application: TeamMemberApplication, settings: CertificateSe
     if settings.require_arrived:
         checks.append(bool(application.arrived))
     if settings.require_min_shifts:
-        checks.append(completed_shift_count(application) >= settings.min_shifts)
+        count = completed_count if completed_count is not None else completed_shift_count(application)
+        checks.append(count >= settings.min_shifts)
     if not checks:
         return False
     if settings.match_mode == CertificateMatchMode.ANY:
@@ -148,7 +153,7 @@ def maybe_auto_issue_certificate(application: TeamMemberApplication) -> MemberCe
         return None
     try:
         return generate_certificate(application, settings)
-    except Exception:
+    except (OSError, ValueError):
         logger.exception("Failed to auto-generate member certificate for application %s", application.pk)
         return None
 

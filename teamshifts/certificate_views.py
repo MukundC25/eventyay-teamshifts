@@ -3,6 +3,7 @@ import mimetypes
 
 from django.contrib import messages
 from django.core.files.base import ContentFile
+from django.db.models import Count, Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -28,7 +29,6 @@ from .pdf import (
 )
 from .permissions import TeamShiftsPermissionRequiredMixin, can_view_email_addresses
 from .services.certificates import (
-    completed_shift_count,
     generate_all_certificates,
     get_certificate_settings,
     member_qualifies,
@@ -115,16 +115,26 @@ class CertificateSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
     def _context(self, request, form, settings):
         event = request.event
         with scope(event=event):
-            members = list(TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user"))
+            members = list(
+                TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED)
+                .select_related("user")
+                .annotate(
+                    _completed_shift_count=Count(
+                        "user__shift_assignments",
+                        filter=Q(user__shift_assignments__shift__event=event, user__shift_assignments__ended_at__isnull=False),
+                    )
+                )
+            )
             certs = {certificate.application_id: certificate for certificate in MemberCertificate.objects.filter(application__in=members)}
         rows = []
         for member in members:
             certificate = certs.get(member.pk)
+            completed = member._completed_shift_count
             rows.append(
                 {
                     "member": member,
-                    "qualifies": member_qualifies(member, settings),
-                    "completed": completed_shift_count(member),
+                    "qualifies": member_qualifies(member, settings, completed_count=completed),
+                    "completed": completed,
                     "generated": bool(certificate and certificate.file),
                     "downloaded": bool(certificate and certificate.downloaded_at),
                 }
