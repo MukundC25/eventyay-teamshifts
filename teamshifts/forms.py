@@ -44,12 +44,6 @@ _BLOCK_TAG_RE = re.compile(r"^\s*<(p|ul|ol|blockquote|div|h[1-6])[\s>]", re.IGNO
 
 
 def plain_text_to_html(text: str) -> str:
-    """Convert plain text with ``\\n`` line separators into ``<p>`` blocks.
-
-    If the text already starts with a block-level HTML tag it is returned
-    unchanged so that content previously saved from the Tiptap editor is
-    not double-wrapped.
-    """
     if not text or _BLOCK_TAG_RE.match(text):
         return text
     paragraphs = re.split(r"\n{2,}", text)
@@ -63,14 +57,6 @@ def plain_text_to_html(text: str) -> str:
 
 
 class _HtmlNormalizingEmailWidget(I18nEmailEditorWidget):
-    """I18nEmailEditorWidget that converts plain-text values to ``<p>`` HTML.
-
-    The Tiptap editor treats raw text with ``\\n`` as whitespace and collapses
-    it into a single paragraph.  This subclass ensures the textarea always
-    contains block-level HTML so that line breaks survive the round-trip
-    through the editor.
-    """
-
     def decompress(self, value):
         values = super().decompress(value)
         return [plain_text_to_html(v) if v else v for v in values]
