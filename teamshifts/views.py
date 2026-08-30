@@ -351,10 +351,7 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
         event = request.event
         locales = event.settings.locales
         with scope(event=event):
-            try:
-                cfm = event.call_for_team_members
-            except CallForTeamMembers.DoesNotExist:
-                raise Http404 from None
+            cfm, _created = CallForTeamMembers.objects.get_or_create(event=event)
 
         from .mail.default_templates import get_default_template
 
