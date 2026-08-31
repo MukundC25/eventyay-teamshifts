@@ -2473,7 +2473,10 @@ class MyShiftsView(PublicShiftScheduleMixin, TemplateView):
         event = self.event
         with scopes_disabled():
             assignments = (
-                ShiftAssignment.objects.filter(team_member=self.request.user)
+                ShiftAssignment.objects.filter(
+                    team_member=self.request.user,
+                    shift__event__plugins__contains="teamshifts",
+                )
                 .select_related(
                     "shift",
                     "shift__event",
@@ -2497,11 +2500,21 @@ class MyShiftsView(PublicShiftScheduleMixin, TemplateView):
 class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
     template_name = "teamshifts/my_shifts_global.html"
 
+    def dispatch(self, request, *args, **kwargs):
+        with scopes_disabled():
+            has_active = ShiftAssignment.objects.filter(team_member=request.user, shift__event__plugins__contains="teamshifts").exists()
+        if not has_active:
+            raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         with scopes_disabled():
             assignments = (
-                ShiftAssignment.objects.filter(team_member=self.request.user)
+                ShiftAssignment.objects.filter(
+                    team_member=self.request.user,
+                    shift__event__plugins__contains="teamshifts",
+                )
                 .select_related(
                     "shift",
                     "shift__event",

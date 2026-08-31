@@ -153,9 +153,18 @@ def teamshifts_mail_placeholders(sender, **kwargs):
     ]
 
 
+PLUGIN_NAME = "teamshifts"
+
+
+def _has_shifts_in_active_events(user):
+    return ShiftAssignment.objects.filter(team_member=user, shift__event__plugins__contains=PLUGIN_NAME).exists()
+
+
 @receiver(user_menu_items, dispatch_uid="teamshifts_user_menu_item")
 def teamshifts_user_menu_item(sender, request=None, icon_class="", **kwargs):
     if request is None or not request.user.is_authenticated:
+        return ""
+    if PLUGIN_NAME not in sender.get_plugins():
         return ""
     with scope(event=sender):
         has_shifts = ShiftAssignment.objects.filter(shift__event=sender, team_member=request.user).exists()
@@ -174,9 +183,8 @@ def teamshifts_nav_global_my_shifts(sender, request=None, **kwargs):
     if request is None or not getattr(request, "user", None) or not request.user.is_authenticated:
         return []
     with scopes_disabled():
-        has_shifts = ShiftAssignment.objects.filter(team_member=request.user).exists()
-    if not has_shifts:
-        return []
+        if not _has_shifts_in_active_events(request.user):
+            return []
     return [
         {
             "label": _("My Shifts"),
@@ -197,9 +205,8 @@ try:
         if not getattr(request, "user", None) or not request.user.is_authenticated:
             return ""
         with scopes_disabled():
-            has_shifts = ShiftAssignment.objects.filter(team_member=request.user).exists()
-        if not has_shifts:
-            return ""
+            if not _has_shifts_in_active_events(request.user):
+                return ""
         return format_html(
             '<a href="{}" class="dropdown-item" role="menuitem" tabindex="-1"><i class="fa fa-calendar-check-o"></i> {}</a>',
             reverse("plugins:teamshifts:my_shifts_global"),
