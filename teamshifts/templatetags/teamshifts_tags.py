@@ -13,3 +13,11 @@ def teamshifts_outbox_count(context):
         return 0
     with scope(event=request.event):
         return TeamShiftsEmailQueue.objects.filter(event=request.event, sent_at__isnull=True, user__isnull=False).count()
+
+
+@register.filter
+def dict_get(d, key):
+    """Look up a dictionary value by key. Returns None if missing."""
+    if isinstance(d, dict):
+        return d.get(key)
+    return None

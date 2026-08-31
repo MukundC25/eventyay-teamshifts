@@ -2531,4 +2531,32 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
             day = local_start.date()
             shifts_by_day[day].append(assignment)
         ctx["shifts_by_day"] = dict(shifts_by_day)
+
+        event_ids = {a.shift.event_id for a in assignments}
+        with scopes_disabled():
+            arrived_map = dict(
+                TeamMemberApplication.objects.filter(
+                    user=self.request.user,
+                    event_id__in=event_ids,
+                    status=ApplicationStatus.ACCEPTED,
+                ).values_list("event_id", "arrived")
+            )
+        ctx["arrived_map"] = arrived_map
         return ctx
+
+
+class MyShiftsToggleArrivedView(LoginRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        event_id = kwargs["event_id"]
+        with scopes_disabled():
+            application = TeamMemberApplication.objects.filter(
+                user=request.user,
+                event_id=event_id,
+                status=ApplicationStatus.ACCEPTED,
+                event__plugins__contains="teamshifts",
+            ).first()
+        if not application:
+            raise Http404
+        application.arrived = not application.arrived
+        application.save(update_fields=["arrived"])
+        return JsonResponse({"arrived": application.arrived})

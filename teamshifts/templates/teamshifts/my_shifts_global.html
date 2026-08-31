@@ -1,6 +1,7 @@
 {% extends "eventyay_common/base.html" %}
 {% load i18n %}
 {% load static %}
+{% load teamshifts_tags %}
 
 {% block title %}{% translate "My Shifts" %}{% endblock %}
 
@@ -10,6 +11,7 @@
 {% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <h1>{% translate "My Shifts" %}</h1>
 
 {% if not shifts_by_day %}
@@ -29,6 +31,7 @@
       </div>
 
       {% for assignment in assignments %}
+        {% with event_id=assignment.shift.event_id is_arrived=arrived_map|dict_get:assignment.shift.event_id %}
         <div class="my-shifts-card">
           <div class="my-shifts-card-time">
             <span class="my-shifts-time-range">
@@ -76,7 +79,21 @@
             </div>
           </div>
 
-          <div class="my-shifts-card-action">
+          <div class="my-shifts-card-actions">
+            <button type="button"
+                    class="btn btn-xs my-shifts-arrived-btn {% if is_arrived %}btn-success{% else %}btn-default{% endif %}"
+                    data-event-id="{{ event_id }}"
+                    data-url="{% url 'plugins:teamshifts:my_shifts_toggle_arrived' event_id=event_id %}"
+                    title="{% if is_arrived %}{% translate 'Arrived' %}{% else %}{% translate 'Not arrived' %}{% endif %}">
+              <i class="fa {% if is_arrived %}fa-check-circle{% else %}fa-circle-o{% endif %}"></i>
+              {% if is_arrived %}{% translate "Arrived" %}{% else %}{% translate "Not arrived" %}{% endif %}
+            </button>
+            <button type="button"
+                    class="btn btn-xs btn-default my-shifts-cert-btn" disabled
+                    title="{% translate 'Certificate download will be available after the event' %}">
+              <i class="fa fa-certificate"></i>
+              {% translate "Certificate" %}
+            </button>
             <a href="{% url 'presale:event.index' event=assignment.shift.event.slug organizer=assignment.shift.event.organizer.slug %}"
                class="btn btn-default btn-xs">
               <i class="fa fa-external-link"></i>
@@ -84,8 +101,10 @@
             </a>
           </div>
         </div>
+        {% endwith %}
       {% endfor %}
     </div>
   {% endfor %}
 {% endif %}
+<script src="{% static 'teamshifts/my_shifts.js' %}"></script>
 {% endblock %}

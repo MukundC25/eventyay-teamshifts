@@ -280,12 +280,7 @@ label .optional {
   gap: 4px;
 }
 
-.my-shifts-card-action {
-  flex-shrink: 0;
-  align-self: center;
-}
-
-@media (max-width: 600px) {
+  @media (max-width: 600px) {
   .my-shifts-card {
     flex-wrap: wrap;
   }
@@ -295,8 +290,31 @@ label .optional {
     width: 100%;
   }
 
-  .my-shifts-card-action {
+  .my-shifts-card-actions {
     width: 100%;
-    text-align: right;
+    flex-direction: row;
+    justify-content: flex-end;
   }
+}
+
+
+.my-shifts-card-actions {
+  flex-shrink: 0;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.my-shifts-arrived-btn {
+  white-space: nowrap;
+}
+
+.my-shifts-cert-btn {
+  white-space: nowrap;
+  opacity: 0.6;
+}
+
+.my-shifts-cert-btn:not([disabled]) {
+  opacity: 1;
 }
