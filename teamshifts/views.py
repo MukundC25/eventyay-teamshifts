@@ -62,13 +62,15 @@ from .models import (
     normalize_field_order,
 )
 from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids, has_teamshifts_permission
-
-ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
+from .services.certificates import maybe_auto_issue_certificate
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
 from .services.members import AlreadyMemberError, add_member_from_organizer
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
+
+
+ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 
 
 class PluginActiveMixin:
@@ -1701,6 +1703,7 @@ class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
             application = get_object_or_404(TeamMemberApplication, pk=kwargs["pk"], event=event, status=ApplicationStatus.ACCEPTED)
             application.arrived = not application.arrived
             application.save(update_fields=["arrived"])
+            maybe_auto_issue_certificate(application)
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 

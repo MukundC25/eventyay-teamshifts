@@ -15,6 +15,9 @@ from .models import (
     ApplicationStatus,
     AskChoices,
     CallForTeamMembers,
+    CertificateMatchMode,
+    CertificateSettings,
+    CertificateTrigger,
     QuestionVariant,
     ShiftLocation,
     TeamApplicationQuestion,
@@ -516,6 +519,7 @@ __all__ = [
     "ShiftForm",
     "ShiftRoleAssignmentForm",
     "BaseShiftRoleFormSet",
+    "CertificateSettingsForm",
 ]
 
 
@@ -674,3 +678,50 @@ class ShiftRoleAssignmentForm(forms.ModelForm):
 
             with scopes_disabled():
                 self.fields["role"].queryset = TeamRole.objects.filter(event=event)
+
+
+class CertificateSettingsForm(forms.ModelForm):
+    generate_automatically = forms.BooleanField(
+        required=False,
+        label=_("Generate automatically"),
+        help_text=_(
+            "When enabled, a certificate is generated as soon as a member meets the conditions, for example "
+            "after they are marked arrived. When disabled, an organizer generates certificates manually."
+        ),
+    )
+
+    class Meta:
+        model = CertificateSettings
+        fields = (
+            "require_arrived",
+            "require_min_shifts",
+            "min_shifts",
+            "match_mode",
+        )
+        widgets = {
+            "require_arrived": forms.CheckboxInput(),
+            "require_min_shifts": forms.CheckboxInput(),
+            "min_shifts": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+            "match_mode": forms.RadioSelect(choices=CertificateMatchMode.choices),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["generate_automatically"].initial = self.instance.trigger == CertificateTrigger.AUTO
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("require_arrived") and not cleaned.get("require_min_shifts"):
+            raise forms.ValidationError(_("Select at least one qualification condition."))
+        min_shifts = cleaned.get("min_shifts") or 1
+        if cleaned.get("require_min_shifts") and min_shifts < 1:
+            self.add_error("min_shifts", _("Enter at least 1 completed shift."))
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.trigger = CertificateTrigger.AUTO if self.cleaned_data.get("generate_automatically") else CertificateTrigger.MANUAL
+        if commit:
+            instance.save()
+        return instance

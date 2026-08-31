@@ -148,6 +148,9 @@ label .optional {
     display: none;
 }
 
+.teamshifts-certificate-progress-bar {
+    width: 0%;
+}
 
 
 .ts-panel-table {
