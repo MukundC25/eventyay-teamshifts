@@ -8,6 +8,7 @@ from datetime import timedelta
 import dateutil.parser
 from django.conf import settings as django_settings
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
@@ -2490,4 +2491,31 @@ class MyShiftsView(PublicShiftScheduleMixin, TemplateView):
             shifts_by_day[day].append(assignment)
         ctx["shifts_by_day"] = dict(shifts_by_day)
         ctx["event"] = event
+        return ctx
+
+
+class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
+    template_name = "teamshifts/my_shifts_global.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        with scopes_disabled():
+            assignments = (
+                ShiftAssignment.objects.filter(team_member=self.request.user)
+                .select_related(
+                    "shift",
+                    "shift__event",
+                    "shift__event__organizer",
+                    "shift__location",
+                    "role",
+                    "assigned_by",
+                )
+                .order_by("shift__start_time")
+            )
+        shifts_by_day = defaultdict(list)
+        for assignment in assignments:
+            local_start = assignment.shift.start_time.astimezone(assignment.shift.event.tz)
+            day = local_start.date()
+            shifts_by_day[day].append(assignment)
+        ctx["shifts_by_day"] = dict(shifts_by_day)
         return ctx

@@ -53,6 +53,11 @@ event_patterns = [
 
 urlpatterns = [
     path(
+        "common/my-shifts/",
+        views.MyShiftsGlobalView.as_view(),
+        name="my_shifts_global",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/",
         views.TeamShiftsDashboard.as_view(),
         name="dashboard",

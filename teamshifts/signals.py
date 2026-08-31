@@ -163,10 +163,7 @@ def teamshifts_user_menu_item(sender, request=None, icon_class="", **kwargs):
         return ""
     return format_html(
         '<a href="{}" class="dropdown-item" role="menuitem" tabindex="-1"><i class="fa fa-calendar-check-o {}"></i> {}</a>',
-        reverse(
-            "plugins:teamshifts:my_shifts",
-            kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
-        ),
+        reverse("plugins:teamshifts:my_shifts_global"),
         icon_class,
         _("My shifts"),
     )
@@ -177,20 +174,14 @@ def teamshifts_nav_global_my_shifts(sender, request=None, **kwargs):
     if request is None or not getattr(request, "user", None) or not request.user.is_authenticated:
         return []
     with scopes_disabled():
-        first_assignment = (
-            ShiftAssignment.objects.filter(team_member=request.user).select_related("shift__event__organizer").order_by("shift__start_time").first()
-        )
-    if not first_assignment:
+        has_shifts = ShiftAssignment.objects.filter(team_member=request.user).exists()
+    if not has_shifts:
         return []
-    event = first_assignment.shift.event
     return [
         {
             "label": _("My Shifts"),
-            "url": reverse(
-                "plugins:teamshifts:my_shifts",
-                kwargs={"organizer": event.organizer.slug, "event": event.slug},
-            ),
-            "active": "/teamshifts/my-shifts/" in getattr(request, "path_info", ""),
+            "url": reverse("plugins:teamshifts:my_shifts_global"),
+            "active": "/common/my-shifts/" in getattr(request, "path_info", ""),
             "icon": "calendar-check-o",
         }
     ]
@@ -206,21 +197,12 @@ try:
         if not getattr(request, "user", None) or not request.user.is_authenticated:
             return ""
         with scopes_disabled():
-            assignments = (
-                ShiftAssignment.objects.filter(team_member=request.user)
-                .select_related("shift__event", "shift__event__organizer")
-                .order_by("shift__start_time")
-                .first()
-            )
-        if not assignments:
+            has_shifts = ShiftAssignment.objects.filter(team_member=request.user).exists()
+        if not has_shifts:
             return ""
-        event = assignments.shift.event
         return format_html(
             '<a href="{}" class="dropdown-item" role="menuitem" tabindex="-1"><i class="fa fa-calendar-check-o"></i> {}</a>',
-            reverse(
-                "plugins:teamshifts:my_shifts",
-                kwargs={"organizer": event.organizer.slug, "event": event.slug},
-            ),
+            reverse("plugins:teamshifts:my_shifts_global"),
             _("My shifts"),
         )
 
