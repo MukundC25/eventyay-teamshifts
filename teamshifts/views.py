@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
+from django.utils.html import strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.utils.translation import get_language, get_language_info, gettext_lazy as _, ngettext
@@ -1781,7 +1782,7 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredM
 
             locations = event.shift_locations.all()
             for loc in locations:
-                data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": loc.description or ""}})
+                data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": strip_tags(loc.description) if loc.description else ""}})
 
             shifts = event.shifts.all().prefetch_related(
                 "role_assignments__role",
@@ -2263,7 +2264,7 @@ class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
                     {
                         "id": loc.id,
                         "name": {"en": loc.name},
-                        "description": {"en": loc.description or ""},
+                        "description": {"en": strip_tags(loc.description) if loc.description else ""},
                     }
                 )
 
@@ -2294,7 +2295,7 @@ class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
             {
                 "id": loc.id,
                 "name": {"en": loc.name},
-                "description": {"en": loc.description or ""},
+                "description": {"en": strip_tags(loc.description) if loc.description else ""},
             }
             for loc in locations
         ]
