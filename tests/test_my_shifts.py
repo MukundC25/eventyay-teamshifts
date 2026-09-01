@@ -42,7 +42,7 @@ def cfm(event):
     return CallForTeamMembers.objects.create(
         event=event,
         title="Join our team",
-        is_open=True,
+        active=True,
         shift_schedule_published=True,
     )
 

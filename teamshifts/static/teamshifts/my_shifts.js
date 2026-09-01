@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.addEventListener('click', function () {
       const url = btn.dataset.url
       const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value
+      const label = btn.querySelector('.my-shifts-arrived-label')
 
       fetch(url, {
         method: 'POST',
@@ -28,15 +29,15 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.classList.add('btn-success')
             icon.classList.remove('fa-circle-o')
             icon.classList.add('fa-check-circle')
-            btn.childNodes[btn.childNodes.length - 1].textContent = ' Arrived'
-            btn.title = 'Arrived'
+            label.textContent = btn.dataset.labelArrived
+            btn.title = btn.dataset.labelArrived
           } else {
             btn.classList.remove('btn-success')
             btn.classList.add('btn-default')
             icon.classList.remove('fa-check-circle')
             icon.classList.add('fa-circle-o')
-            btn.childNodes[btn.childNodes.length - 1].textContent = ' Not arrived'
-            btn.title = 'Not arrived'
+            label.textContent = btn.dataset.labelNotArrived
+            btn.title = btn.dataset.labelNotArrived
           }
         })
     })

@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load eventurl %}
 {% load static %}
+{% load tz %}
 
 {% block title %}{% translate "My Shifts" %}{% endblock %}
 
@@ -46,6 +47,7 @@
           </div>
 
           {% for assignment in assignments %}
+            {% timezone assignment.shift.event.timezone %}
             <div class="my-shifts-card">
               <div class="my-shifts-card-time">
                 <span class="my-shifts-time-range">
@@ -101,6 +103,7 @@
                 </a>
               </div>
             </div>
+            {% endtimezone %}
           {% endfor %}
         </div>
       {% endfor %}

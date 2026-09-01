@@ -1,6 +1,7 @@
 {% extends "eventyay_common/base.html" %}
 {% load i18n %}
 {% load static %}
+{% load tz %}
 {% load teamshifts_tags %}
 
 {% block title %}{% translate "My Shifts" %}{% endblock %}
@@ -32,6 +33,7 @@
 
       {% for assignment in assignments %}
         {% with event_id=assignment.shift.event_id is_arrived=arrived_map|dict_get:assignment.shift.event_id %}
+        {% timezone assignment.shift.event.timezone %}
         <div class="my-shifts-card">
           <div class="my-shifts-card-time">
             <span class="my-shifts-time-range">
@@ -84,9 +86,11 @@
                     class="btn btn-xs my-shifts-arrived-btn {% if is_arrived %}btn-success{% else %}btn-default{% endif %}"
                     data-event-id="{{ event_id }}"
                     data-url="{% url 'plugins:teamshifts:my_shifts_toggle_arrived' event_id=event_id %}"
+                    data-label-arrived="{% translate 'Arrived' %}"
+                    data-label-not-arrived="{% translate 'Not arrived' %}"
                     title="{% if is_arrived %}{% translate 'Arrived' %}{% else %}{% translate 'Not arrived' %}{% endif %}">
               <i class="fa {% if is_arrived %}fa-check-circle{% else %}fa-circle-o{% endif %}"></i>
-              {% if is_arrived %}{% translate "Arrived" %}{% else %}{% translate "Not arrived" %}{% endif %}
+              <span class="my-shifts-arrived-label">{% if is_arrived %}{% translate "Arrived" %}{% else %}{% translate "Not arrived" %}{% endif %}</span>
             </button>
             <button type="button"
                     class="btn btn-xs btn-default my-shifts-cert-btn" disabled
@@ -101,6 +105,7 @@
             </a>
           </div>
         </div>
+        {% endtimezone %}
         {% endwith %}
       {% endfor %}
     </div>
