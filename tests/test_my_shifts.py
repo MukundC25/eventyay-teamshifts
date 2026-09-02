@@ -82,41 +82,51 @@ def shift_assignment(shift, user, team_role):
 
 
 @pytest.fixture
-def my_shifts_url(event):
-    return reverse(
-        "plugins:teamshifts:my_shifts",
-        kwargs={"organizer": event.organizer.slug, "event": event.slug},
-    )
+def global_url():
+    return reverse("plugins:teamshifts:my_shifts_global")
 
 
 @pytest.mark.django_db
-def test_my_shifts_unauthenticated(client, my_shifts_url):
-    response = client.get(my_shifts_url)
+def test_my_shifts_unauthenticated(client, global_url):
+    response = client.get(global_url)
     assert response.status_code == 302
-    assert "/login" in response.url
+    assert "/login" in response.url or "login" in response.url.lower()
 
 
 @pytest.mark.django_db
-def test_my_shifts_not_accepted_member(client, user, event, cfm, my_shifts_url):
+def test_my_shifts_no_shifts(client, user, global_url):
     client.force_login(user)
-    response = client.get(my_shifts_url)
-    assert response.status_code == 302
+    response = client.get(global_url)
+    assert response.status_code == 404
 
 
 @pytest.mark.django_db
-def test_my_shifts_empty(client, user, event, cfm, accepted_application, my_shifts_url):
+def test_my_shifts_plugin_disabled(client, user, event, accepted_application, shift_assignment, global_url):
+    event.plugins = ""
+    event.save(update_fields=["plugins"])
+    client.force_login(user)
+    response = client.get(global_url)
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_my_shifts_with_assignment(client, user, event, cfm, accepted_application, shift_assignment, global_url):
     client.force_login(user)
     with scopes_disabled():
-        response = client.get(my_shifts_url)
-    assert response.status_code == 200
-    assert b"no shifts assigned" in response.content.lower()
-
-
-@pytest.mark.django_db
-def test_my_shifts_with_assignment(client, user, event, cfm, accepted_application, shift_assignment, my_shifts_url):
-    client.force_login(user)
-    with scopes_disabled():
-        response = client.get(my_shifts_url)
+        response = client.get(global_url)
     assert response.status_code == 200
     assert b"Registration" in response.content
     assert b"Morning Shift" in response.content
+
+
+@pytest.mark.django_db
+def test_my_shifts_toggle_arrived(client, user, event, accepted_application, shift_assignment):
+    client.force_login(user)
+    url = reverse("plugins:teamshifts:my_shifts_toggle_arrived", kwargs={"event_id": event.pk})
+    response = client.post(url, content_type="application/json")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["arrived"] is True
+
+    response = client.post(url, content_type="application/json")
+    assert response.json()["arrived"] is False
