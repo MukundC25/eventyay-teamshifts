@@ -1,7 +1,7 @@
 from django.urls import path
 from eventyay.common.urls import OrganizerSlugConverter  # noqa: F401
 
-from . import views
+from . import certificate_views, views
 
 event_patterns = [
     path(
@@ -136,6 +136,11 @@ urlpatterns = [
         "teamshifts/event/<orgslug:organizer>/<slug:event>/shifts/<int:pk>/edit/",
         views.ShiftUpdateView.as_view(),
         name="shift_edit",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/shifts/bulk-delete/",
+        views.BulkShiftDeleteView.as_view(),
+        name="shift_bulk_delete",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/shifts/<int:pk>/delete/",
@@ -286,6 +291,26 @@ urlpatterns = [
         "teamshifts/event/<orgslug:organizer>/<slug:event>/emails/<int:pk>/send/",
         views.EmailQueueSendNowView.as_view(),
         name="email_send_now",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/",
+        certificate_views.CertificateSettingsView.as_view(),
+        name="certificates",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/preview/",
+        certificate_views.CertificatePreviewView.as_view(),
+        name="certificate_preview",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/default.pdf",
+        certificate_views.CertificateDefaultPdfView.as_view(),
+        name="certificate_default",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/editor/",
+        certificate_views.CertificateEditorView.as_view(),
+        name="certificate_editor",
     ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/applications/bulk-action/",

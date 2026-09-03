@@ -3,6 +3,7 @@ import secrets
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from django.utils.translation import gettext_lazy as _
 from django_scopes import ScopedManager, scope
 from i18nfield.fields import I18nTextField
@@ -356,6 +357,18 @@ class ShiftAssignment(models.Model):
         related_name="assignments_made",
     )
     assigned_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Assigned At"))
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Started At"),
+        help_text=_("Set when the member checks in on My Shifts."),
+    )
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Ended At"),
+        help_text=_("Set when the member checks out on My Shifts. A shift counts as completed once this is set."),
+    )
     is_moderator = models.BooleanField(default=False, verbose_name=_("Is Moderator"))
     notified = models.BooleanField(default=False, verbose_name=_("Notified"))
 
@@ -584,3 +597,87 @@ class TeamShiftsCustomEmailTemplate(models.Model):
 
     def __str__(self):
         return f"{self.event.slug} · {self.name}"
+
+
+class CertificateMatchMode(models.TextChoices):
+    ALL = "all", _("Require all selected conditions")
+    ANY = "any", _("Require any one selected condition")
+
+
+class CertificateTrigger(models.TextChoices):
+    AUTO = "auto", _("Automatically")
+    MANUAL = "manual", _("Manually")
+
+
+def certificate_background_name(instance, filename: str) -> str:
+    secret = get_random_string(16)
+    return f"pub/{instance.event.organizer.slug}/{instance.event.slug}/teamshifts/certificates/bg-{instance.pk}-{secret}.pdf"
+
+
+def member_certificate_name(instance, filename: str) -> str:
+    secret = get_random_string(16)
+    return f"pub/{instance.application.event.organizer.slug}/{instance.application.event.slug}/teamshifts/certificates/{instance.pk}-{secret}.pdf"
+
+
+class CertificateSettings(models.Model):
+    event = models.OneToOneField(
+        "base.Event",
+        on_delete=models.CASCADE,
+        related_name="teamshifts_certificate_settings",
+    )
+    require_arrived = models.BooleanField(
+        default=True,
+        verbose_name=_("Marked as arrived at the event"),
+    )
+    require_min_shifts = models.BooleanField(
+        default=False,
+        verbose_name=_("Completed at least a minimum number of shifts"),
+    )
+    min_shifts = models.PositiveIntegerField(
+        default=1,
+        verbose_name=_("Minimum completed shifts"),
+    )
+    match_mode = models.CharField(
+        max_length=8,
+        choices=CertificateMatchMode.choices,
+        default=CertificateMatchMode.ALL,
+        verbose_name=_("How conditions combine"),
+    )
+    trigger = models.CharField(
+        max_length=8,
+        choices=CertificateTrigger.choices,
+        default=CertificateTrigger.AUTO,
+        verbose_name=_("Certificate generation trigger"),
+    )
+    layout = models.TextField(blank=True)
+    background = models.FileField(null=True, blank=True, upload_to=certificate_background_name, max_length=255)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ScopedManager(event="event")
+
+    class Meta:
+        verbose_name = _("Certificate settings")
+        verbose_name_plural = _("Certificate settings")
+
+    def __str__(self):
+        return f"Certificates ({self.event.slug})"
+
+
+class MemberCertificate(models.Model):
+    application = models.OneToOneField(
+        TeamMemberApplication,
+        on_delete=models.CASCADE,
+        related_name="certificate",
+    )
+    file = models.FileField(null=True, blank=True, upload_to=member_certificate_name, max_length=255)
+    generated_at = models.DateTimeField(auto_now=True)
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ScopedManager(event="application__event")
+
+    class Meta:
+        verbose_name = _("Member certificate")
+        verbose_name_plural = _("Member certificates")
+
+    def __str__(self):
+        return f"Certificate for {self.application}"

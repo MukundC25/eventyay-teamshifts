@@ -64,13 +64,15 @@ from .models import (
     normalize_field_order,
 )
 from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids, has_teamshifts_permission
-
-ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
+from .services.certificates import maybe_auto_issue_certificate
 from .services.email import get_recipients, queue_email, queue_lifecycle_email
 from .services.members import AlreadyMemberError, add_member_from_organizer
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
+
+
+ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
 
 
 class PluginActiveMixin:
@@ -1375,16 +1377,70 @@ class ShiftLocationDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
         return redirect("plugins:teamshifts:locations", organizer=request.organizer.slug, event=request.event.slug)
 
 
-class ShiftListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
+class ShiftListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, PaginationMixin, ListView):
     permission = "can_teamshifts_create_shifts"
     template_name = "teamshifts/shifts.html"
+    context_object_name = "shifts"
+    DEFAULT_PAGINATION = 50
+
+    def get_queryset(self):
+        event = self.request.event
+        with scope(event=event):
+            return Shift.objects.filter(event=event).select_related("location").prefetch_related("role_assignments__role").order_by("start_time", "pk")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         event = self.request.event
-        with scope(event=event):
-            ctx["shifts"] = list(Shift.objects.filter(event=event).select_related("location").prefetch_related("role_assignments__role").order_by("start_time"))
+        ctx["can_manage_shifts"] = has_teamshifts_permission(
+            self.request.user, self.request.organizer, event, "can_teamshifts_create_shifts", request=self.request
+        )
         return ctx
+
+
+class BulkShiftDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+    permission = "can_teamshifts_create_shifts"
+
+    def post(self, request, *args, **kwargs):
+        event = request.event
+        with scope(event=event):
+            shift_ids = [int(v) for v in request.POST.getlist("shift_ids") if str(v).strip().isdigit()]
+            if not shift_ids:
+                messages.warning(request, _("No shifts selected."))
+                return redirect(
+                    reverse(
+                        "plugins:teamshifts:shifts",
+                        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+                    )
+                )
+
+            with transaction.atomic():
+                shifts = Shift.objects.filter(event=event, pk__in=shift_ids)
+                count = shifts.count()
+                if count == 0:
+                    messages.warning(request, _("No shifts selected."))
+                    return redirect(
+                        reverse(
+                            "plugins:teamshifts:shifts",
+                            kwargs={"organizer": event.organizer.slug, "event": event.slug},
+                        )
+                    )
+                shifts.delete()
+
+            messages.success(
+                request,
+                ngettext(
+                    "%(count)d shift deleted.",
+                    "%(count)d shifts deleted.",
+                    count,
+                )
+                % {"count": count},
+            )
+            return redirect(
+                reverse(
+                    "plugins:teamshifts:shifts",
+                    kwargs={"organizer": event.organizer.slug, "event": event.slug},
+                )
+            )
 
 
 class ShiftCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, TemplateView):
@@ -1649,6 +1705,7 @@ class MemberArrivedToggleView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
             application = get_object_or_404(TeamMemberApplication, pk=kwargs["pk"], event=event, status=ApplicationStatus.ACCEPTED)
             application.arrived = not application.arrived
             application.save(update_fields=["arrived"])
+            maybe_auto_issue_certificate(application)
             return JsonResponse({"success": True, "arrived": application.arrived})
 
 
