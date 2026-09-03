@@ -58,6 +58,11 @@ urlpatterns = [
         name="my_shifts_global",
     ),
     path(
+        "common/my-shifts/certificate/<int:event_id>/",
+        views.MyShiftsCertificateDownloadView.as_view(),
+        name="my_shifts_certificate_download",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/",
         views.TeamShiftsDashboard.as_view(),
         name="dashboard",

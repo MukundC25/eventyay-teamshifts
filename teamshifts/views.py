@@ -2532,6 +2532,7 @@ class MyShiftsView(PublicShiftScheduleMixin, TemplateView):
             assignments = (
                 ShiftAssignment.objects.filter(
                     team_member=self.request.user,
+                    shift__event=event,
                     shift__event__plugins__contains="teamshifts",
                 )
                 .select_related(
@@ -2601,4 +2602,40 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
             shifts_by_event[assignment.shift.event].append(assignment)
         ctx["shifts_by_event"] = dict(shifts_by_event)
         ctx["filter_form"] = filter_form
+
+        event_ids = {e.pk for e in shifts_by_event}
+        with scopes_disabled():
+            from .models import MemberCertificate
+
+            cert_event_ids = set(
+                MemberCertificate.objects.filter(
+                    application__user=self.request.user,
+                    application__event_id__in=event_ids,
+                    file__isnull=False,
+                )
+                .exclude(file="")
+                .values_list("application__event_id", flat=True)
+            )
+        ctx["cert_event_ids"] = cert_event_ids
         return ctx
+
+
+class MyShiftsCertificateDownloadView(LoginRequiredMixin, View):
+    def get(self, request, event_id):
+        with scopes_disabled():
+            application = TeamMemberApplication.objects.filter(
+                user=request.user,
+                event_id=event_id,
+                status=ApplicationStatus.ACCEPTED,
+                event__plugins__contains="teamshifts",
+            ).first()
+        if not application:
+            raise Http404
+        certificate = getattr(application, "certificate", None)
+        if not certificate or not certificate.file:
+            raise Http404
+        response = HttpResponse(certificate.file.read(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="certificate-{application.event.slug}.pdf"'
+        certificate.downloaded_at = now()
+        certificate.save(update_fields=["downloaded_at"])
+        return response

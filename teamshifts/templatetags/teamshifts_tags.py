@@ -21,3 +21,9 @@ def dict_get(d, key):
     if isinstance(d, dict):
         return d.get(key)
     return None
+
+
+@register.filter
+def in_set(value, container):
+    """Check if value is in a container (set, list, etc.)."""
+    return value in container if container else False

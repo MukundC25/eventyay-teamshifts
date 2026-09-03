@@ -3,6 +3,7 @@
 {% load static %}
 {% load tz %}
 {% load bootstrap3 %}
+{% load teamshifts_tags %}
 
 {% block title %}{% translate "My Shifts" %}{% endblock %}
 
@@ -67,12 +68,20 @@
             <span class="badge">{{ assignments|length }}</span>
           </h3>
           <div class="my-shifts-event-actions">
-            <button type="button"
-                    class="btn btn-xs btn-default my-shifts-cert-btn" disabled
-                    title="{% translate 'Certificate download will be available after the event' %}">
-              <i class="fa fa-download"></i>
-              {% translate "Download Certificate" %}
-            </button>
+            {% if event.pk|in_set:cert_event_ids %}
+              <a href="{% url 'plugins:teamshifts:my_shifts_certificate_download' event_id=event.pk %}"
+                 class="btn btn-xs btn-primary my-shifts-cert-btn">
+                <i class="fa fa-download"></i>
+                {% translate "Download Certificate" %}
+              </a>
+            {% else %}
+              <button type="button"
+                      class="btn btn-xs btn-default my-shifts-cert-btn" disabled
+                      title="{% translate 'Certificate not yet available' %}">
+                <i class="fa fa-download"></i>
+                {% translate "Download Certificate" %}
+              </button>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -105,6 +114,9 @@
                     <span class="label label-info">{{ assignment.role.name }}</span>
                   {% else %}
                     —
+                  {% endif %}
+                  {% if assignment.is_moderator %}
+                    <span class="label label-warning">{% translate "Moderator" %}</span>
                   {% endif %}
                 </td>
                 <td data-label="{% translate 'Location' %}">

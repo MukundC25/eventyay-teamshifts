@@ -66,6 +66,11 @@
                       <i class="fa fa-id-badge"></i> {{ assignment.role.name }}
                     </span>
                   {% endif %}
+                  {% if assignment.is_moderator %}
+                    <span class="my-shifts-badge my-shifts-badge-moderator">
+                      <i class="fa fa-star"></i> {% translate "Moderator" %}
+                    </span>
+                  {% endif %}
                   {% if assignment.assigned_by %}
                     <span class="my-shifts-badge my-shifts-badge-assigned">
                       <i class="fa fa-user-plus"></i> {% translate "Assigned by organizer" %}
