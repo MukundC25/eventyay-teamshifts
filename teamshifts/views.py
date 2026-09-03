@@ -13,7 +13,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -2634,7 +2634,10 @@ class MyShiftsCertificateDownloadView(LoginRequiredMixin, View):
         certificate = getattr(application, "certificate", None)
         if not certificate or not certificate.file:
             raise Http404
-        response = HttpResponse(certificate.file.read(), content_type="application/pdf")
+        response = FileResponse(
+            certificate.file.open("rb"),
+            content_type="application/pdf",
+        )
         response["Content-Disposition"] = f'attachment; filename="certificate-{application.event.slug}.pdf"'
         certificate.downloaded_at = now()
         certificate.save(update_fields=["downloaded_at"])
