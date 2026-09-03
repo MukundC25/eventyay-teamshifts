@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load static %}
 {% load tz %}
-{% load teamshifts_tags %}
+{% load bootstrap3 %}
 
 {% block title %}{% translate "My Shifts" %}{% endblock %}
 
@@ -12,10 +12,42 @@
 {% endblock %}
 
 {% block content %}
-{% csrf_token %}
 <h1>{% translate "My Shifts" %}</h1>
 
-{% if not shifts_by_day %}
+<div class="advanced-filter-search" data-advanced-filter-search>
+  <form class="filter-form advanced-filter-search-form" action="" method="get">
+    <div class="advanced-filter-search-bar">
+      <div class="input-group advanced-filter-search-query-group">
+        <input id="id_search" type="text" name="search" class="form-control"
+               placeholder="{% translate 'Search shifts…' %}"
+               aria-label="{% translate 'Search shifts…' %}"
+               value="{{ filter_form.search.value|default_if_none:'' }}">
+        <span class="input-group-btn">
+          <button class="btn btn-primary" type="submit">
+            <span class="fa fa-search" aria-hidden="true"></span>
+            {% translate "Search" %}
+          </button>
+        </span>
+      </div>
+      <div class="advanced-filter-field advanced-filter-field--inline">
+        {% bootstrap_field filter_form.event layout='inline' %}
+      </div>
+      <div class="advanced-filter-search-actions">
+        <button class="btn btn-primary" type="submit">
+          <span class="fa fa-filter" aria-hidden="true"></span>
+          {% translate "Filter" %}
+        </button>
+        <a href="{{ request.path }}" class="btn btn-default btn-clear-filter"
+           aria-label="{% translate 'Clear filters' %}" title="{% translate 'Clear filters' %}">
+          <span class="fa fa-eraser" aria-hidden="true"></span>
+          <span class="sr-only">{% translate "Clear filters" %}</span>
+        </a>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if not shifts_by_event %}
   <div class="alert alert-info">
     <i class="fa fa-info-circle"></i>
     {% blocktranslate trimmed %}
@@ -23,93 +55,74 @@
     {% endblocktranslate %}
   </div>
 {% else %}
-  {% for day, assignments in shifts_by_day.items %}
-    <div class="my-shifts-day-group">
-      <div class="my-shifts-day-header">
-        <i class="fa fa-calendar"></i>
-        <strong>{{ day|date:"l, N j, Y" }}</strong>
-        <span class="badge">{{ assignments|length }}</span>
-      </div>
-
-      {% for assignment in assignments %}
-        {% with event_id=assignment.shift.event_id is_arrived=arrived_map|dict_get:assignment.shift.event_id %}
-        {% timezone assignment.shift.event.timezone %}
-        <div class="my-shifts-card">
-          <div class="my-shifts-card-time">
-            <span class="my-shifts-time-range">
-              <i class="fa fa-clock-o"></i>
-              {{ assignment.shift.start_time|time:"H:i" }}–{{ assignment.shift.end_time|time:"H:i" }}
-            </span>
-            {% if assignment.shift.name %}
-              <span class="my-shifts-shift-name text-muted">{{ assignment.shift.name }}</span>
-            {% endif %}
-          </div>
-
-          <div class="my-shifts-card-body">
-            <div class="my-shifts-badges">
-              {% if assignment.role %}
-                <span class="my-shifts-badge my-shifts-badge-role">
-                  <i class="fa fa-id-badge"></i> {{ assignment.role.name }}
-                </span>
-              {% endif %}
-              {% if assignment.assigned_by %}
-                <span class="my-shifts-badge my-shifts-badge-assigned">
-                  <i class="fa fa-user-plus"></i> {% translate "Assigned by organizer" %}
-                </span>
-              {% else %}
-                <span class="my-shifts-badge my-shifts-badge-self">
-                  <i class="fa fa-hand-o-up"></i> {% translate "Self-signed up" %}
-                </span>
-              {% endif %}
-            </div>
-
-            <div class="my-shifts-meta">
-              <span class="my-shifts-location">
-                <i class="fa fa-map-marker"></i>
-                {% if assignment.shift.location %}
-                  {{ assignment.shift.location.name }}
-                {% elif assignment.shift.location_text %}
-                  {{ assignment.shift.location_text }}
-                {% else %}
-                  <span class="text-muted">{% translate "No location set" %}</span>
-                {% endif %}
-              </span>
-              <span class="my-shifts-event text-muted">
-                <i class="fa fa-calendar-o"></i>
-                {{ assignment.shift.event.name }}
-              </span>
-            </div>
-          </div>
-
-          <div class="my-shifts-card-actions">
-            <button type="button"
-                    class="btn btn-xs my-shifts-arrived-btn {% if is_arrived %}btn-success{% else %}btn-default{% endif %}"
-                    data-event-id="{{ event_id }}"
-                    data-url="{% url 'plugins:teamshifts:my_shifts_toggle_arrived' event_id=event_id %}"
-                    data-label-arrived="{% translate 'Arrived' %}"
-                    data-label-not-arrived="{% translate 'Not arrived' %}"
-                    title="{% if is_arrived %}{% translate 'Arrived' %}{% else %}{% translate 'Not arrived' %}{% endif %}">
-              <i class="fa {% if is_arrived %}fa-check-circle{% else %}fa-circle-o{% endif %}"></i>
-              <span class="my-shifts-arrived-label">{% if is_arrived %}{% translate "Arrived" %}{% else %}{% translate "Not arrived" %}{% endif %}</span>
-            </button>
+  {% for event, assignments in shifts_by_event.items %}
+    <div class="panel panel-default my-shifts-event-panel">
+      <div class="panel-heading">
+        <div class="my-shifts-event-header">
+          <h3 class="panel-title">
+            <a href="{% url 'presale:event.index' event=event.slug organizer=event.organizer.slug %}">
+              {{ event.name }}
+            </a>
+            <span class="text-muted my-shifts-event-dates">{{ event.get_date_range_display }}</span>
+            <span class="badge">{{ assignments|length }}</span>
+          </h3>
+          <div class="my-shifts-event-actions">
             <button type="button"
                     class="btn btn-xs btn-default my-shifts-cert-btn" disabled
                     title="{% translate 'Certificate download will be available after the event' %}">
-              <i class="fa fa-certificate"></i>
-              {% translate "Certificate" %}
+              <i class="fa fa-download"></i>
+              {% translate "Download Certificate" %}
             </button>
-            <a href="{% url 'presale:event.index' event=assignment.shift.event.slug organizer=assignment.shift.event.organizer.slug %}"
-               class="btn btn-default btn-xs">
-              <i class="fa fa-external-link"></i>
-              {% translate "Event" %}
-            </a>
           </div>
         </div>
-        {% endtimezone %}
-        {% endwith %}
-      {% endfor %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-condensed table-hover">
+          <thead>
+            <tr>
+              <th>{% translate "Date" %}</th>
+              <th>{% translate "Time" %}</th>
+              <th>{% translate "Shift" %}</th>
+              <th>{% translate "Role" %}</th>
+              <th>{% translate "Location" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% timezone event.timezone %}
+            {% for assignment in assignments %}
+              <tr>
+                <td data-label="{% translate 'Date' %}">
+                  {{ assignment.shift.start_time|date:"D, N j" }}
+                </td>
+                <td data-label="{% translate 'Time' %}">
+                  {{ assignment.shift.start_time|time:"H:i" }}–{{ assignment.shift.end_time|time:"H:i" }}
+                </td>
+                <td data-label="{% translate 'Shift' %}">
+                  {{ assignment.shift.name|default:"—" }}
+                </td>
+                <td data-label="{% translate 'Role' %}">
+                  {% if assignment.role %}
+                    <span class="label label-info">{{ assignment.role.name }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="{% translate 'Location' %}">
+                  {% if assignment.shift.location %}
+                    {{ assignment.shift.location.name }}
+                  {% elif assignment.shift.location_text %}
+                    {{ assignment.shift.location_text }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            {% endtimezone %}
+          </tbody>
+        </table>
+      </div>
     </div>
   {% endfor %}
 {% endif %}
-<script src="{% static 'teamshifts/my_shifts.js' %}"></script>
 {% endblock %}

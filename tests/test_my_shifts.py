@@ -117,16 +117,3 @@ def test_my_shifts_with_assignment(client, user, event, cfm, accepted_applicatio
     assert response.status_code == 200
     assert b"Registration" in response.content
     assert b"Morning Shift" in response.content
-
-
-@pytest.mark.django_db
-def test_my_shifts_toggle_arrived(client, user, event, accepted_application, shift_assignment):
-    client.force_login(user)
-    url = reverse("plugins:teamshifts:my_shifts_toggle_arrived", kwargs={"event_id": event.pk})
-    response = client.post(url, content_type="application/json")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["arrived"] is True
-
-    response = client.post(url, content_type="application/json")
-    assert response.json()["arrived"] is False

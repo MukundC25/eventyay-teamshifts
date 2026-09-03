@@ -2567,9 +2567,12 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
+        from .forms import MyShiftsFilterForm
+
         ctx = super().get_context_data(**kwargs)
+        filter_form = MyShiftsFilterForm(self.request.GET, user=self.request.user)
         with scopes_disabled():
-            assignments = (
+            qs = (
                 ShiftAssignment.objects.filter(
                     team_member=self.request.user,
                     shift__event__plugins__contains="teamshifts",
@@ -2582,40 +2585,20 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
                     "role",
                     "assigned_by",
                 )
-                .order_by("shift__start_time")
+                .order_by("shift__event__name", "shift__start_time")
             )
-        shifts_by_day = defaultdict(list)
-        for assignment in assignments:
-            local_start = assignment.shift.start_time.astimezone(assignment.shift.event.tz)
-            day = local_start.date()
-            shifts_by_day[day].append(assignment)
-        ctx["shifts_by_day"] = dict(shifts_by_day)
 
-        event_ids = {a.shift.event_id for a in assignments}
-        with scopes_disabled():
-            arrived_map = dict(
-                TeamMemberApplication.objects.filter(
-                    user=self.request.user,
-                    event_id__in=event_ids,
-                    status=ApplicationStatus.ACCEPTED,
-                ).values_list("event_id", "arrived")
-            )
-        ctx["arrived_map"] = arrived_map
+            if filter_form.is_valid():
+                event = filter_form.cleaned_data.get("event")
+                search = filter_form.cleaned_data.get("search")
+                if event:
+                    qs = qs.filter(shift__event=event)
+                if search:
+                    qs = qs.filter(shift__name__icontains=search)
+
+        shifts_by_event = defaultdict(list)
+        for assignment in qs:
+            shifts_by_event[assignment.shift.event].append(assignment)
+        ctx["shifts_by_event"] = dict(shifts_by_event)
+        ctx["filter_form"] = filter_form
         return ctx
-
-
-class MyShiftsToggleArrivedView(LoginRequiredMixin, View):
-    def post(self, request, *args, **kwargs):
-        event_id = kwargs["event_id"]
-        with scopes_disabled():
-            application = TeamMemberApplication.objects.filter(
-                user=request.user,
-                event_id=event_id,
-                status=ApplicationStatus.ACCEPTED,
-                event__plugins__contains="teamshifts",
-            ).first()
-        if not application:
-            raise Http404
-        application.arrived = not application.arrived
-        application.save(update_fields=["arrived"])
-        return JsonResponse({"arrived": application.arrived})
