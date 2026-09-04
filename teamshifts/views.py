@@ -2145,7 +2145,7 @@ def _shift_roles_payload(shift):
 _BLOCK_TAG_RE = re.compile(
     r"</?(?:address|article|aside|blockquote|dd|details|div|dl|dt|figcaption"
     r"|figure|footer|h[1-6]|header|li|main|nav|ol|p|pre|section|summary"
-    r"|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>|<br\s*/?>",
+    r"|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>|<br\b[^>]*>",
     re.IGNORECASE,
 )
 
