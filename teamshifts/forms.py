@@ -73,9 +73,9 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
                 attrs={"data-tiptap-profile": "richtext"},
             )
             field.widget.enabled_locales = locales
-            locale_set = set(locales)
+            fields_by_locale = {f.locale: f for f in field.fields}
             field.locales = list(locales)
-            field.fields = [f for f in field.fields if f.locale in locale_set]
+            field.fields = [fields_by_locale[loc] for loc in locales if loc in fields_by_locale]
         if self._event:
             self.fields["deadline"].help_text = get_tz_help(self._event)
             if not self.initial.get("deadline"):
