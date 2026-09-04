@@ -1,0 +1,140 @@
+{% extends "eventyay_common/base.html" %}
+{% load i18n %}
+{% load static %}
+{% load tz %}
+{% load bootstrap3 %}
+{% load teamshifts_tags %}
+
+{% block title %}{% translate "My Shifts" %}{% endblock %}
+
+{% block custom_header %}
+  {{ block.super }}
+  <link rel="stylesheet" type="text/css" href="{% static 'teamshifts/teamshifts.css' %}">
+{% endblock %}
+
+{% block content %}
+<h1>{% translate "My Shifts" %}</h1>
+
+<div class="advanced-filter-search" data-advanced-filter-search>
+  <form class="filter-form advanced-filter-search-form" action="" method="get">
+    <div class="advanced-filter-search-bar">
+      <div class="input-group advanced-filter-search-query-group">
+        <input id="id_search" type="text" name="search" class="form-control"
+               placeholder="{% translate 'Search shifts…' %}"
+               aria-label="{% translate 'Search shifts…' %}"
+               value="{{ filter_form.search.value|default_if_none:'' }}">
+        <span class="input-group-btn">
+          <button class="btn btn-primary" type="submit">
+            <span class="fa fa-search" aria-hidden="true"></span>
+            {% translate "Search" %}
+          </button>
+        </span>
+      </div>
+      <div class="advanced-filter-field advanced-filter-field--inline">
+        {% bootstrap_field filter_form.event layout='inline' %}
+      </div>
+      <div class="advanced-filter-search-actions">
+        <button class="btn btn-primary" type="submit">
+          <span class="fa fa-filter" aria-hidden="true"></span>
+          {% translate "Filter" %}
+        </button>
+        <a href="{{ request.path }}" class="btn btn-default btn-clear-filter"
+           aria-label="{% translate 'Clear filters' %}" title="{% translate 'Clear filters' %}">
+          <span class="fa fa-eraser" aria-hidden="true"></span>
+          <span class="sr-only">{% translate "Clear filters" %}</span>
+        </a>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if not shifts_by_event %}
+  <div class="alert alert-info">
+    <i class="fa fa-info-circle"></i>
+    {% blocktranslate trimmed %}
+      You have no shifts assigned yet.
+    {% endblocktranslate %}
+  </div>
+{% else %}
+  {% for event, assignments in shifts_by_event.items %}
+    <div class="panel panel-default my-shifts-event-panel">
+      <div class="panel-heading">
+        <div class="my-shifts-event-header">
+          <h3 class="panel-title">
+            <a href="{% url 'presale:event.index' event=event.slug organizer=event.organizer.slug %}">
+              {{ event.name }}
+            </a>
+            <span class="text-muted my-shifts-event-dates">{{ event.get_date_range_display }}</span>
+            <span class="badge">{{ assignments|length }}</span>
+          </h3>
+          <div class="my-shifts-event-actions">
+            {% if event.pk|in_set:cert_event_ids %}
+              <a href="{% url 'plugins:teamshifts:my_shifts_certificate_download' event_id=event.pk %}"
+                 class="btn btn-xs btn-primary my-shifts-cert-btn">
+                <i class="fa fa-download"></i>
+                {% translate "Download Certificate" %}
+              </a>
+            {% else %}
+              <button type="button"
+                      class="btn btn-xs btn-default my-shifts-cert-btn" disabled
+                      title="{% translate 'Certificate not yet available' %}">
+                <i class="fa fa-download"></i>
+                {% translate "Download Certificate" %}
+              </button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-condensed table-hover">
+          <thead>
+            <tr>
+              <th>{% translate "Date" %}</th>
+              <th>{% translate "Time" %}</th>
+              <th>{% translate "Shift" %}</th>
+              <th>{% translate "Role" %}</th>
+              <th>{% translate "Location" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% timezone event.timezone %}
+            {% for assignment in assignments %}
+              <tr>
+                <td data-label="{% translate 'Date' %}">
+                  {{ assignment.shift.start_time|date:"D, N j" }}
+                </td>
+                <td data-label="{% translate 'Time' %}">
+                  {{ assignment.shift.start_time|time:"H:i" }}–{{ assignment.shift.end_time|time:"H:i" }}
+                </td>
+                <td data-label="{% translate 'Shift' %}">
+                  {{ assignment.shift.name|default:"—" }}
+                </td>
+                <td data-label="{% translate 'Role' %}">
+                  {% if assignment.role %}
+                    <span class="label label-info">{{ assignment.role.name }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                  {% if assignment.is_moderator %}
+                    <span class="label label-warning">{% translate "Moderator" %}</span>
+                  {% endif %}
+                </td>
+                <td data-label="{% translate 'Location' %}">
+                  {% if assignment.shift.location %}
+                    {{ assignment.shift.location.name }}
+                  {% elif assignment.shift.location_text %}
+                    {{ assignment.shift.location_text }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            {% endtimezone %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

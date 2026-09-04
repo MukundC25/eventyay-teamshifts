@@ -44,9 +44,24 @@ event_patterns = [
         views.ShiftWithdrawView.as_view(),
         name="public_shift_withdraw",
     ),
+    path(
+        "teamshifts/my-shifts/",
+        views.MyShiftsView.as_view(),
+        name="my_shifts",
+    ),
 ]
 
 urlpatterns = [
+    path(
+        "common/my-shifts/",
+        views.MyShiftsGlobalView.as_view(),
+        name="my_shifts_global",
+    ),
+    path(
+        "common/my-shifts/certificate/<int:event_id>/",
+        views.MyShiftsCertificateDownloadView.as_view(),
+        name="my_shifts_certificate_download",
+    ),
     path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/",
         views.TeamShiftsDashboard.as_view(),

@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
 from django_scopes.forms import SafeModelChoiceField
+from eventyay.base.models import Event
 from eventyay.common.forms.widgets import I18nEmailEditorWidget, RichTextWidget
 from eventyay.control.forms import SplitDateTimeField, SplitDateTimePickerWidget
 from i18nfield.forms import I18nFormField, I18nTextInput
@@ -725,3 +726,28 @@ class CertificateSettingsForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class MyShiftsFilterForm(forms.Form):
+    event = forms.ModelChoiceField(
+        queryset=Event.objects.none(),
+        required=False,
+        label=_("Event"),
+        widget=forms.Select(attrs={"class": "form-control"}),
+        empty_label=_("Select an Event"),
+    )
+    search = forms.CharField(
+        required=False,
+        label=_("Search"),
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": _("Search shifts…")}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user:
+            with scopes_disabled():
+                events = Event.objects.filter(
+                    shifts__assignments__team_member=user,
+                    plugins__contains="teamshifts",
+                ).distinct()
+            self.fields["event"].queryset = events

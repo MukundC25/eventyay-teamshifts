@@ -2,16 +2,18 @@ import json
 import logging
 import re
 import secrets
+from collections import defaultdict
 from datetime import timedelta
 
 import dateutil.parser
 from django.conf import settings as django_settings
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -2517,3 +2519,126 @@ def _notify_organizers_shift_dropped(event, volunteer, shift):
         recipients=organizer_users,
         status_filter="",
     )
+
+
+class MyShiftsView(PublicShiftScheduleMixin, TemplateView):
+    template_name = "teamshifts/my_shifts.html"
+    redirect_unpublished_to_schedule = False
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        event = self.event
+        with scopes_disabled():
+            assignments = (
+                ShiftAssignment.objects.filter(
+                    team_member=self.request.user,
+                    shift__event=event,
+                    shift__event__plugins__contains="teamshifts",
+                )
+                .select_related(
+                    "shift",
+                    "shift__event",
+                    "shift__event__organizer",
+                    "shift__location",
+                    "role",
+                    "assigned_by",
+                )
+                .order_by("shift__start_time")
+            )
+        shifts_by_day = defaultdict(list)
+        for assignment in assignments:
+            local_start = assignment.shift.start_time.astimezone(assignment.shift.event.tz)
+            day = local_start.date()
+            shifts_by_day[day].append(assignment)
+        ctx["shifts_by_day"] = dict(shifts_by_day)
+        ctx["event"] = event
+        return ctx
+
+
+class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
+    template_name = "teamshifts/my_shifts_global.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return super().dispatch(request, *args, **kwargs)
+        with scopes_disabled():
+            has_active = ShiftAssignment.objects.filter(team_member=request.user, shift__event__plugins__contains="teamshifts").exists()
+        if not has_active:
+            raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        from .forms import MyShiftsFilterForm
+
+        ctx = super().get_context_data(**kwargs)
+        filter_form = MyShiftsFilterForm(self.request.GET, user=self.request.user)
+        with scopes_disabled():
+            qs = (
+                ShiftAssignment.objects.filter(
+                    team_member=self.request.user,
+                    shift__event__plugins__contains="teamshifts",
+                )
+                .select_related(
+                    "shift",
+                    "shift__event",
+                    "shift__event__organizer",
+                    "shift__location",
+                    "role",
+                    "assigned_by",
+                )
+                .order_by("shift__event__name", "shift__start_time")
+            )
+
+            if filter_form.is_valid():
+                event = filter_form.cleaned_data.get("event")
+                search = filter_form.cleaned_data.get("search")
+                if event:
+                    qs = qs.filter(shift__event=event)
+                if search:
+                    qs = qs.filter(shift__name__icontains=search)
+
+        shifts_by_event = defaultdict(list)
+        for assignment in qs:
+            shifts_by_event[assignment.shift.event].append(assignment)
+        ctx["shifts_by_event"] = dict(shifts_by_event)
+        ctx["filter_form"] = filter_form
+
+        event_ids = {e.pk for e in shifts_by_event}
+        with scopes_disabled():
+            from .models import MemberCertificate
+
+            cert_event_ids = set(
+                MemberCertificate.objects.filter(
+                    application__user=self.request.user,
+                    application__event_id__in=event_ids,
+                    file__isnull=False,
+                )
+                .exclude(file="")
+                .values_list("application__event_id", flat=True)
+            )
+        ctx["cert_event_ids"] = cert_event_ids
+        return ctx
+
+
+class MyShiftsCertificateDownloadView(LoginRequiredMixin, View):
+    def get(self, request, event_id):
+        with scopes_disabled():
+            application = TeamMemberApplication.objects.filter(
+                user=request.user,
+                event_id=event_id,
+                status=ApplicationStatus.ACCEPTED,
+                event__plugins__contains="teamshifts",
+            ).first()
+        if not application:
+            raise Http404
+        certificate = getattr(application, "certificate", None)
+        if not certificate or not certificate.file:
+            raise Http404
+        response = FileResponse(
+            certificate.file.open("rb"),
+            content_type="application/pdf",
+        )
+        response["Content-Disposition"] = f'attachment; filename="certificate-{application.event.slug}.pdf"'
+        certificate.downloaded_at = now()
+        certificate.save(update_fields=["downloaded_at"])
+        return response

@@ -8,16 +8,16 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django_scopes import scopes_disabled
+from django_scopes import scope, scopes_disabled
 from eventyay.base.email import SimpleFunctionalMailTextPlaceholder
 from eventyay.base.models.organizer import Team
 from eventyay.base.signals import register_mail_placeholders
-from eventyay.common.signals import periodic_task
-from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets
+from eventyay.common.signals import periodic_task, user_menu_items
+from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets, nav_global
 from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
 
-from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication, TeamRole, TeamShiftsEmailQueue
+from .models import ApplicationStatus, CallForTeamMembers, ShiftAssignment, TeamMemberApplication, TeamRole, TeamShiftsEmailQueue
 from .permissions import has_any_teamshifts_permission
 from .tasks import send_queued_email
 
@@ -151,6 +151,70 @@ def teamshifts_mail_placeholders(sender, **kwargs):
             lambda event: "https://example.com/my-event/",
         ),
     ]
+
+
+PLUGIN_NAME = "teamshifts"
+
+
+def _has_shifts_in_active_events(user):
+    return ShiftAssignment.objects.filter(team_member=user, shift__event__plugins__contains=PLUGIN_NAME).exists()
+
+
+@receiver(user_menu_items, dispatch_uid="teamshifts_user_menu_item")
+def teamshifts_user_menu_item(sender, request=None, icon_class="", **kwargs):
+    if request is None or not request.user.is_authenticated:
+        return ""
+    if PLUGIN_NAME not in sender.get_plugins():
+        return ""
+    with scope(event=sender):
+        has_shifts = ShiftAssignment.objects.filter(shift__event=sender, team_member=request.user).exists()
+    if not has_shifts:
+        return ""
+    return format_html(
+        '<a href="{}" class="dropdown-item" role="menuitem" tabindex="-1"><i class="fa fa-calendar-check-o {}"></i> {}</a>',
+        reverse("plugins:teamshifts:my_shifts_global"),
+        icon_class,
+        _("My shifts"),
+    )
+
+
+@receiver(nav_global, dispatch_uid="teamshifts_nav_global_my_shifts")
+def teamshifts_nav_global_my_shifts(sender, request=None, **kwargs):
+    if request is None or not getattr(request, "user", None) or not request.user.is_authenticated:
+        return []
+    with scopes_disabled():
+        if not _has_shifts_in_active_events(request.user):
+            return []
+    return [
+        {
+            "label": _("My Shifts"),
+            "url": reverse("plugins:teamshifts:my_shifts_global"),
+            "active": "/common/my-shifts/" in getattr(request, "path_info", ""),
+            "icon": "calendar-check-o",
+        }
+    ]
+
+
+try:
+    from eventyay.common.signals import user_dashboard_links
+
+    @receiver(user_dashboard_links, dispatch_uid="teamshifts_user_dashboard_link")
+    def teamshifts_user_dashboard_link(sender, **kwargs):
+        """Add 'My Shifts' to the global dashboard dropdown for users with any shift assignment."""
+        request = sender
+        if not getattr(request, "user", None) or not request.user.is_authenticated:
+            return ""
+        with scopes_disabled():
+            if not _has_shifts_in_active_events(request.user):
+                return ""
+        return format_html(
+            '<a href="{}" class="dropdown-item" role="menuitem" tabindex="-1"><i class="fa fa-calendar-check-o"></i> {}</a>',
+            reverse("plugins:teamshifts:my_shifts_global"),
+            _("My shifts"),
+        )
+
+except ImportError:
+    pass
 
 
 @receiver(periodic_task, dispatch_uid="teamshifts_dispatch_scheduled_emails")
