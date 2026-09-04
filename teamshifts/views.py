@@ -1,3 +1,4 @@
+import html as html_mod
 import json
 import logging
 import re
@@ -18,6 +19,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
+from django.utils.html import strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.utils.translation import get_language, get_language_info, gettext_lazy as _, ngettext
@@ -1783,7 +1785,7 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredM
 
             locations = event.shift_locations.all()
             for loc in locations:
-                data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": loc.description or ""}})
+                data["rooms"].append({"id": loc.id, "name": {"en": loc.name}, "description": {"en": _html_to_plain(loc.description)}})
 
             shifts = event.shifts.all().prefetch_related(
                 "role_assignments__role",
@@ -2142,6 +2144,24 @@ def _shift_roles_payload(shift):
     return roles_data
 
 
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:address|article|aside|blockquote|dd|details|div|dl|dt|figcaption"
+    r"|figure|footer|h[1-6]|header|li|main|nav|ol|p|pre|section|summary"
+    r"|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>|<br\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def _html_to_plain(value: str) -> str:
+    """Convert rich-text HTML to plain text for schedule tooltips."""
+    if not value:
+        return ""
+    text = _BLOCK_TAG_RE.sub("\n", value)
+    text = strip_tags(text)
+    text = html_mod.unescape(text)
+    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
 def _shift_talk_payload(shift):
     duration = int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0
     return {
@@ -2265,7 +2285,7 @@ class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
                     {
                         "id": loc.id,
                         "name": {"en": loc.name},
-                        "description": {"en": loc.description or ""},
+                        "description": {"en": _html_to_plain(loc.description)},
                     }
                 )
 
@@ -2296,7 +2316,7 @@ class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
             {
                 "id": loc.id,
                 "name": {"en": loc.name},
-                "description": {"en": loc.description or ""},
+                "description": {"en": _html_to_plain(loc.description)},
             }
             for loc in locations
         ]
