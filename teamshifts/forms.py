@@ -67,12 +67,16 @@ class CallForTeamMembersSettingsForm(forms.ModelForm):
         self._event = kwargs.pop("event", None)
         super().__init__(*args, **kwargs)
         if locales:
-            self.fields["description"].widget = I18nEmailEditorWidget(
+            field = self.fields["description"]
+            field.widget = I18nEmailEditorWidget(
                 locales=locales,
-                field=self.fields["description"],
+                field=field,
                 attrs={"data-tiptap-profile": "richtext"},
             )
-            self.fields["description"].widget.enabled_locales = locales
+            field.widget.enabled_locales = locales
+            fields_by_locale = {f.locale: f for f in field.fields}
+            field.locales = list(locales)
+            field.fields = [fields_by_locale[loc] for loc in locales if loc in fields_by_locale]
         if self._event:
             self.fields["deadline"].help_text = get_tz_help(self._event)
             if not self.initial.get("deadline"):
