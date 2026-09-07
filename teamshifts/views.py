@@ -1684,16 +1684,10 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
         )
         if ctx["vouchers_enabled"]:
             members_list = list(ctx.get("members", []))
-            voucher_assignments = {
-                mv.application_id: mv
-                for mv in MemberVoucher.objects.filter(
-                    application__in=[m.pk for m in members_list],
-                ).select_related("voucher")
-            }
-            if voucher_assignments:
-                newly_claimed_ids = []
+            newly_claimed_ids = []
+            with scope(event=event):
                 for member in members_list:
-                    va = voucher_assignments.get(member.pk)
+                    va = getattr(member, "voucher_assignment", None)
                     if va and va.status != VoucherStatus.CLAIMED and va.voucher.redeemed > 0:
                         va.status = VoucherStatus.CLAIMED
                         newly_claimed_ids.append(va.pk)
