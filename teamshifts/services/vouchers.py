@@ -70,49 +70,47 @@ def allocate_and_send_vouchers(
                 result["skipped_claimed"] += 1
                 continue
 
-            # Resend the same voucher code
-            _send_voucher_email(event, user, existing.voucher, template, locale)
-            if existing.status == VoucherStatus.NOT_SENT:
-                existing.status = VoucherStatus.SENT
-            existing.sent_at = now()
-            existing.save(update_fields=["status", "sent_at"])
-            result["resent"] += 1
+            if _send_voucher_email(event, user, existing.voucher, template, locale):
+                if existing.status == VoucherStatus.NOT_SENT:
+                    existing.status = VoucherStatus.SENT
+                existing.sent_at = now()
+                existing.save(update_fields=["status", "sent_at"])
+                result["resent"] += 1
             continue
 
-        # Allocate a new voucher from the batch
-        with scope(event=event):
+        with scope(event=event), transaction.atomic():
             voucher = _claim_next_voucher(settings)
+            if voucher is None:
+                result["skipped_no_vouchers"] += 1
+                continue
 
-        if voucher is None:
-            result["skipped_no_vouchers"] += 1
-            continue
-
-        with scope(event=event):
             member_voucher = MemberVoucher.objects.create(
                 application=application,
                 voucher=voucher,
-                status=VoucherStatus.SENT,
-                sent_at=now(),
+                status=VoucherStatus.NOT_SENT,
+                sent_at=None,
             )
 
-        _send_voucher_email(event, user, voucher, template, locale)
-        result["sent"] += 1
+        if _send_voucher_email(event, user, voucher, template, locale):
+            member_voucher.status = VoucherStatus.SENT
+            member_voucher.sent_at = now()
+            member_voucher.save(update_fields=["status", "sent_at"])
+            result["sent"] += 1
 
     return result
 
 
-@transaction.atomic
 def _claim_next_voucher(settings: VolunteerVoucherSettings) -> Voucher | None:
-    """Atomically pick and lock one unused voucher from the batch.
+    """Pick and lock one unused voucher from the batch.
 
-    Uses select_for_update to prevent two concurrent requests from
-    allocating the same voucher.
+    Must be called inside a transaction.atomic() block so the row lock
+    is held until the caller creates the MemberVoucher assignment.
     """
     assigned_ids = MemberVoucher.objects.filter(
         application__event=settings.event,
     ).values_list("voucher_id", flat=True)
 
-    voucher = (
+    return (
         Voucher.objects.filter(
             event=settings.event,
             tag=settings.voucher_tag,
@@ -122,11 +120,9 @@ def _claim_next_voucher(settings: VolunteerVoucherSettings) -> Voucher | None:
         .select_for_update(skip_locked=True)
         .first()
     )
-    return voucher
 
 
-def _send_voucher_email(event, user, voucher, template, locale):
-    """Send the voucher email directly (synchronous, no outbox)."""
+def _send_voucher_email(event, user, voucher, template, locale) -> bool:
     redeem_base = build_absolute_uri(event, "presale:event.index")
     ticket_claim_url = f"{redeem_base}?voucher={voucher.code}"
 
@@ -151,3 +147,5 @@ def _send_voucher_email(event, user, voucher, template, locale):
         )
     except SendMailException:
         logger.exception("[TeamShifts] Failed to send voucher email to %s", user.email)
+        return False
+    return True

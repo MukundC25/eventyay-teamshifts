@@ -1676,17 +1676,29 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
         voucher_settings = self._get_voucher_settings()
         ctx["vouchers_enabled"] = bool(voucher_settings and voucher_settings.enabled and voucher_settings.voucher_tag)
-        ctx["vouchers_not_configured"] = not ctx["vouchers_enabled"]
+        ctx["vouchers_not_configured"] = bool(voucher_settings and voucher_settings.enabled and not voucher_settings.voucher_tag)
         ctx["voucher_batch_empty"] = (
             voucher_settings.batch_remaining_count() == 0
             if ctx["vouchers_enabled"]
             else False
         )
         if ctx["vouchers_enabled"]:
-            for member in ctx.get("members", []):
-                va = getattr(member, "voucher_assignment", None)
-                if va is not None:
-                    va.refresh_claimed_status()
+            members_list = list(ctx.get("members", []))
+            voucher_assignments = {
+                mv.application_id: mv
+                for mv in MemberVoucher.objects.filter(
+                    application__in=[m.pk for m in members_list],
+                ).select_related("voucher")
+            }
+            if voucher_assignments:
+                newly_claimed_ids = []
+                for member in members_list:
+                    va = voucher_assignments.get(member.pk)
+                    if va and va.status != VoucherStatus.CLAIMED and va.voucher.redeemed > 0:
+                        va.status = VoucherStatus.CLAIMED
+                        newly_claimed_ids.append(va.pk)
+                if newly_claimed_ids:
+                    MemberVoucher.objects.filter(pk__in=newly_claimed_ids).update(status=VoucherStatus.CLAIMED)
 
         return ctx
 
@@ -2801,7 +2813,7 @@ class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
         if result["skipped_no_vouchers"]:
             parts.append(_("Voucher batch is empty. Add more codes in Tickets → Vouchers."))
 
-        summary = " ".join(str(p) for p in parts)
+        summary = " ".join(str(p) for p in parts) or str(_("No vouchers were sent."))
         if result["sent"] or result["resent"]:
             messages.success(request, summary)
         else:

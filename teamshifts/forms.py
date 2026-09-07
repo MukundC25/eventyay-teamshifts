@@ -771,7 +771,6 @@ class VoucherSettingsForm(forms.Form):
     )
 
     def __init__(self, *args, event=None, **kwargs):
-        initial = kwargs.get("initial", {})
         self.event = event
         super().__init__(*args, **kwargs)
 
@@ -789,3 +788,9 @@ class VoucherSettingsForm(forms.Form):
             tag_choices += [(t, t) for t in tags]
 
         self.fields["voucher_tag"].choices = tag_choices
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("enabled") and not cleaned.get("voucher_tag"):
+            self.add_error("voucher_tag", _("Select a voucher batch when vouchers are enabled."))
+        return cleaned

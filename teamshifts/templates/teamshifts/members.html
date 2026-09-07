@@ -49,14 +49,14 @@
     {% if vouchers_enabled %}
       <div class='bulk-action-bar' id='bulk-action-bar' style='display:none;'>
         <span id='selected-count'>0</span> {% trans 'selected' %} —
+        <button type='button' class='btn btn-sm btn-success' id='bulk-send-btn'>
+          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
+        </button>
         {% if voucher_batch_empty %}
-          <button type='button' class='btn btn-sm btn-warning' disabled title='{% trans "Voucher batch is empty. Add more codes in Tickets → Vouchers." %}'>
-            <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
-          </button>
-        {% else %}
-          <button type='button' class='btn btn-sm btn-success' id='bulk-send-btn'>
-            <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
-          </button>
+          <span class='text-warning'>
+            <i class='fa fa-exclamation-triangle'></i>
+            {% trans 'Voucher batch is empty — only resends are possible. Add more codes in Tickets → Vouchers.' %}
+          </span>
         {% endif %}
       </div>
     {% elif vouchers_not_configured %}
