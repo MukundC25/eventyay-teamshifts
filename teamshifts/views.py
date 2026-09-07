@@ -1677,11 +1677,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
         voucher_settings = self._get_voucher_settings()
         ctx["vouchers_enabled"] = bool(voucher_settings and voucher_settings.enabled and voucher_settings.voucher_tag)
         ctx["vouchers_not_configured"] = bool(voucher_settings and voucher_settings.enabled and not voucher_settings.voucher_tag)
-        ctx["voucher_batch_empty"] = (
-            voucher_settings.batch_remaining_count() == 0
-            if ctx["vouchers_enabled"]
-            else False
-        )
+        ctx["voucher_batch_empty"] = voucher_settings.batch_remaining_count() == 0 if ctx["vouchers_enabled"] else False
         if ctx["vouchers_enabled"]:
             members_list = list(ctx.get("members", []))
             newly_claimed_ids = []
@@ -2714,10 +2710,14 @@ class VoucherSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 "voucher_tag": settings.voucher_tag,
             },
         )
-        return render(request, self.template_name, {
-            "form": form,
-            "voucher_settings": settings,
-        })
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "voucher_settings": settings,
+            },
+        )
 
     def post(self, request, *args, **kwargs):
         settings = self._get_settings()
@@ -2732,10 +2732,14 @@ class VoucherSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, 
                 organizer=request.organizer.slug,
                 event=request.event.slug,
             )
-        return render(request, self.template_name, {
-            "form": form,
-            "voucher_settings": settings,
-        })
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "voucher_settings": settings,
+            },
+        )
 
 
 class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
@@ -2786,7 +2790,8 @@ class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
                     "Voucher sent to %(count)d member.",
                     "Vouchers sent to %(count)d members.",
                     result["sent"],
-                ) % {"count": result["sent"]}
+                )
+                % {"count": result["sent"]}
             )
         if result["resent"]:
             parts.append(
@@ -2794,7 +2799,8 @@ class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
                     "%(count)d voucher resent.",
                     "%(count)d vouchers resent.",
                     result["resent"],
-                ) % {"count": result["resent"]}
+                )
+                % {"count": result["resent"]}
             )
         if result["skipped_claimed"]:
             parts.append(
@@ -2802,7 +2808,8 @@ class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
                     "%(count)d skipped (already claimed).",
                     "%(count)d skipped (already claimed).",
                     result["skipped_claimed"],
-                ) % {"count": result["skipped_claimed"]}
+                )
+                % {"count": result["skipped_claimed"]}
             )
         if result["skipped_no_vouchers"]:
             parts.append(_("Voucher batch is empty. Add more codes in Tickets → Vouchers."))

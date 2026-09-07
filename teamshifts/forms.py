@@ -778,13 +778,7 @@ class VoucherSettingsForm(forms.Form):
         if event is not None:
             from eventyay.base.models import Voucher
 
-            tags = (
-                Voucher.objects.filter(event=event)
-                .exclude(tag="")
-                .values_list("tag", flat=True)
-                .distinct()
-                .order_by("tag")
-            )
+            tags = Voucher.objects.filter(event=event).exclude(tag="").values_list("tag", flat=True).distinct().order_by("tag")
             tag_choices += [(t, t) for t in tags]
 
         self.fields["voucher_tag"].choices = tag_choices
