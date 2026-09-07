@@ -1676,6 +1676,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
 
         voucher_settings = self._get_voucher_settings()
         ctx["vouchers_enabled"] = bool(voucher_settings and voucher_settings.enabled and voucher_settings.voucher_tag)
+        ctx["vouchers_not_configured"] = not ctx["vouchers_enabled"]
         ctx["voucher_batch_empty"] = (
             voucher_settings.batch_remaining_count() == 0
             if ctx["vouchers_enabled"]

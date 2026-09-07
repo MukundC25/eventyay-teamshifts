@@ -59,13 +59,20 @@
           </button>
         {% endif %}
       </div>
+    {% elif vouchers_not_configured %}
+      <div class='bulk-action-bar' id='bulk-action-bar' style='display:none;'>
+        <span id='selected-count'>0</span> {% trans 'selected' %} —
+        <button type='button' class='btn btn-sm btn-default' disabled title='{% trans "Configure a voucher batch in settings first." %}'>
+          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
+        </button>
+      </div>
     {% endif %}
 
     <div class='table-responsive'>
       <table class='table table-hover table-quotas'>
         <thead>
           <tr>
-            {% if vouchers_enabled %}
+            {% if vouchers_enabled or vouchers_not_configured %}
               <th class='checkbox-column'>
                 <input type='checkbox' id='select-all' title='{% trans "Select all" %}'>
               </th>
@@ -86,7 +93,7 @@
         <tbody>
           {% for member in members %}
             <tr>
-              {% if vouchers_enabled %}
+              {% if vouchers_enabled or vouchers_not_configured %}
                 <td class='checkbox-column'>
                   <input type='checkbox' data-member-id='{{ member.pk }}' class='member-checkbox'>
                 </td>

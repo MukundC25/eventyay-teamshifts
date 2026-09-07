@@ -5,7 +5,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0001_initial"),
-        ("teamshifts", "0019_member_added_by_organizer"),
+        ("teamshifts", "0020_certificate_settings"),
     ]
 
     operations = [
