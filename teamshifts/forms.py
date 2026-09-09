@@ -44,13 +44,11 @@ def format_datetime_local(dt):
 
 EMAIL_PLACEHOLDERS = ["full_name", "event_name", "role_name", "event_dates", "event_location", "shift_schedule_url"]
 
-_BLOCK_TAG_RE = re.compile(r"^\s*<(p|ul|ol|blockquote|div|h[1-6])[\s>]", re.IGNORECASE)
-
 
 def plain_text_to_html(text: str) -> str:
     if not text:
         return text
-    if "data-variable=" in text or _BLOCK_TAG_RE.match(text):
+    if text.lstrip().startswith("<") or "data-variable=" in text:
         return text
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     paragraphs = re.split(r"\n{2,}", text)
