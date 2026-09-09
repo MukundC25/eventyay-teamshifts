@@ -5,7 +5,8 @@ from django.db import models
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.utils.translation import gettext_lazy as _
-from django_scopes import ScopedManager, scope
+from django_scopes import ScopedManager, scope, scopes_disabled
+from eventyay.base.models import Voucher
 from i18nfield.fields import I18nTextField
 
 
@@ -719,25 +720,23 @@ class VolunteerVoucherSettings(models.Model):
         return f"Voucher settings for {self.event.slug}"
 
     def get_available_vouchers(self):
-        from eventyay.base.models import Voucher
-
         if not self.voucher_tag:
             return Voucher.objects.none()
         assigned_voucher_ids = MemberVoucher.objects.filter(
             application__event=self.event,
         ).values_list("voucher_id", flat=True)
-        return Voucher.objects.filter(
-            event=self.event,
-            tag=self.voucher_tag,
-            redeemed=0,
-        ).exclude(pk__in=assigned_voucher_ids)
+        with scopes_disabled():
+            return Voucher.objects.filter(
+                event=self.event,
+                tag=self.voucher_tag,
+                redeemed=0,
+            ).exclude(pk__in=assigned_voucher_ids)
 
     def batch_total_count(self) -> int:
-        from eventyay.base.models import Voucher
-
         if not self.voucher_tag:
             return 0
-        return Voucher.objects.filter(event=self.event, tag=self.voucher_tag).count()
+        with scopes_disabled():
+            return Voucher.objects.filter(event=self.event, tag=self.voucher_tag).count()
 
     def batch_remaining_count(self) -> int:
         return self.get_available_vouchers().count()

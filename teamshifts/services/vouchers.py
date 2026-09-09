@@ -4,7 +4,7 @@ from typing import TypedDict
 
 from django.db import transaction
 from django.utils.timezone import now
-from django_scopes import scope
+from django_scopes import scope, scopes_disabled
 from eventyay.base.email import get_email_context
 from eventyay.base.models import Event, Voucher
 from eventyay.base.services.mail import SendMailException, mail
@@ -110,16 +110,17 @@ def _claim_next_voucher(settings: VolunteerVoucherSettings) -> Voucher | None:
         application__event=settings.event,
     ).values_list("voucher_id", flat=True)
 
-    return (
-        Voucher.objects.filter(
-            event=settings.event,
-            tag=settings.voucher_tag,
-            redeemed=0,
+    with scopes_disabled():
+        return (
+            Voucher.objects.filter(
+                event=settings.event,
+                tag=settings.voucher_tag,
+                redeemed=0,
+            )
+            .exclude(pk__in=assigned_ids)
+            .select_for_update(skip_locked=True)
+            .first()
         )
-        .exclude(pk__in=assigned_ids)
-        .select_for_update(skip_locked=True)
-        .first()
-    )
 
 
 def _send_voucher_email(event, user, voucher, template, locale) -> bool:

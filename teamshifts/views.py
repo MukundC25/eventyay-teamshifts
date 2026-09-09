@@ -1677,11 +1677,11 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
         voucher_settings = self._get_voucher_settings()
         ctx["vouchers_enabled"] = bool(voucher_settings and voucher_settings.enabled and voucher_settings.voucher_tag)
         ctx["vouchers_not_configured"] = bool(voucher_settings and voucher_settings.enabled and not voucher_settings.voucher_tag)
-        ctx["voucher_batch_empty"] = voucher_settings.batch_remaining_count() == 0 if ctx["vouchers_enabled"] else False
         if ctx["vouchers_enabled"]:
-            members_list = list(ctx.get("members", []))
-            newly_claimed_ids = []
             with scope(event=event):
+                ctx["voucher_batch_empty"] = voucher_settings.batch_remaining_count() == 0
+                members_list = list(ctx.get("members", []))
+                newly_claimed_ids = []
                 for member in members_list:
                     va = getattr(member, "voucher_assignment", None)
                     if va and va.status != VoucherStatus.CLAIMED and va.voucher.redeemed > 0:
@@ -1689,6 +1689,8 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagi
                         newly_claimed_ids.append(va.pk)
                 if newly_claimed_ids:
                     MemberVoucher.objects.filter(pk__in=newly_claimed_ids).update(status=VoucherStatus.CLAIMED)
+        else:
+            ctx["voucher_batch_empty"] = False
 
         return ctx
 
