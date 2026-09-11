@@ -2815,6 +2815,15 @@ class BulkSendVouchersView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
             )
         if result["skipped_no_vouchers"]:
             parts.append(_("Voucher batch is empty. Add more codes in Tickets → Vouchers."))
+        if result["skipped_no_email"]:
+            parts.append(
+                ngettext(
+                    "%(count)d skipped (no email address on file).",
+                    "%(count)d skipped (no email address on file).",
+                    result["skipped_no_email"],
+                )
+                % {"count": result["skipped_no_email"]}
+            )
 
         summary = " ".join(str(p) for p in parts) or str(_("No vouchers were sent."))
         if result["sent"] or result["resent"]:

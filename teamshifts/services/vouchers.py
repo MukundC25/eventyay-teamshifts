@@ -28,6 +28,7 @@ class SendResult(TypedDict):
     resent: int
     skipped_claimed: int
     skipped_no_vouchers: int
+    skipped_no_email: int
 
 
 def allocate_and_send_vouchers(
@@ -41,8 +42,15 @@ def allocate_and_send_vouchers(
     - Not sent → pick an unused voucher from the batch, send email, status = sent
     - Sent — not claimed → resend the same code, no new voucher allocated
     - Claimed → skip silently
+    - No email address → counted in skipped_no_email
     """
-    result: SendResult = {"sent": 0, "resent": 0, "skipped_claimed": 0, "skipped_no_vouchers": 0}
+    result: SendResult = {
+        "sent": 0,
+        "resent": 0,
+        "skipped_claimed": 0,
+        "skipped_no_vouchers": 0,
+        "skipped_no_email": 0,
+    }
 
     try:
         cfm = event.call_for_team_members
@@ -56,16 +64,26 @@ def allocate_and_send_vouchers(
     template = cfm.get_mail_template(EmailTemplateRoles.VOUCHER_SENT)
     locale = event.settings.locale
 
+    application_ids = [a.pk for a in applications]
+    with scope(event=event):
+        existing_map: dict[int, MemberVoucher] = {
+            mv.application_id: mv for mv in MemberVoucher.objects.filter(application_id__in=application_ids).select_related("voucher")
+        }
+        assigned_voucher_ids: set[int] = {mv.voucher_id for mv in existing_map.values()}
+
     for application in applications:
         user = application.user
         if not user or not user.email:
+            result["skipped_no_email"] += 1
             continue
 
-        with scope(event=event):
-            existing = MemberVoucher.objects.filter(application=application).select_related("voucher").first()
+        existing = existing_map.get(application.pk)
 
         if existing is not None:
-            existing.refresh_claimed_status()
+            if existing.status != VoucherStatus.CLAIMED and existing.voucher.redeemed > 0:
+                existing.status = VoucherStatus.CLAIMED
+                existing.save(update_fields=["status"])
+
             if existing.status == VoucherStatus.CLAIMED:
                 result["skipped_claimed"] += 1
                 continue
@@ -79,7 +97,7 @@ def allocate_and_send_vouchers(
             continue
 
         with scope(event=event), transaction.atomic():
-            voucher = _claim_next_voucher(settings)
+            voucher = _claim_next_voucher(settings, assigned_voucher_ids)
             if voucher is None:
                 result["skipped_no_vouchers"] += 1
                 continue
@@ -90,6 +108,7 @@ def allocate_and_send_vouchers(
                 status=VoucherStatus.NOT_SENT,
                 sent_at=None,
             )
+            assigned_voucher_ids.add(voucher.pk)
 
         if _send_voucher_email(event, user, voucher, template, locale):
             member_voucher.status = VoucherStatus.SENT
@@ -100,16 +119,15 @@ def allocate_and_send_vouchers(
     return result
 
 
-def _claim_next_voucher(settings: VolunteerVoucherSettings) -> Voucher | None:
+def _claim_next_voucher(settings: VolunteerVoucherSettings, assigned_voucher_ids: set[int]) -> Voucher | None:
     """Pick and lock one unused voucher from the batch.
 
     Must be called inside a transaction.atomic() block so the row lock
     is held until the caller creates the MemberVoucher assignment.
-    """
-    assigned_ids = MemberVoucher.objects.filter(
-        application__event=settings.event,
-    ).values_list("voucher_id", flat=True)
 
+    ``assigned_voucher_ids`` is the caller-maintained set of already-reserved
+    voucher PKs, passed in as a concrete set to avoid a subquery on each call.
+    """
     with scopes_disabled():
         return (
             Voucher.objects.filter(
@@ -117,13 +135,14 @@ def _claim_next_voucher(settings: VolunteerVoucherSettings) -> Voucher | None:
                 tag=settings.voucher_tag,
                 redeemed=0,
             )
-            .exclude(pk__in=assigned_ids)
+            .exclude(pk__in=assigned_voucher_ids)
             .select_for_update(skip_locked=True)
             .first()
         )
 
 
 def _send_voucher_email(event, user, voucher, template, locale) -> bool:
+    """Send the voucher email directly. Returns True on success, False on failure."""
     redeem_base = build_absolute_uri(event, "presale:event.index")
     ticket_claim_url = f"{redeem_base}?voucher={voucher.code}"
 

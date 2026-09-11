@@ -122,3 +122,17 @@ def test_email_failure_keeps_not_sent(event, cfm, voucher_settings, voucher_batc
         mv = MemberVoucher.objects.get(application=app)
         assert mv.status == VoucherStatus.NOT_SENT
         assert mv.sent_at is None
+
+
+@pytest.mark.django_db
+def test_skipped_no_email_counted(event, cfm, voucher_settings, voucher_batch, django_user_model):
+    app_with_email = _make_member(event, "g@example.com", django_user_model)
+    u_no_email = django_user_model.objects.create_user(email="", password="x")
+    with scopes_disabled():
+        app_no_email = TeamMemberApplication.objects.create(event=event, user=u_no_email, status=ApplicationStatus.ACCEPTED)
+
+    with patch("teamshifts.services.vouchers._send_voucher_email", return_value=True):
+        result = allocate_and_send_vouchers(event, voucher_settings, [app_with_email, app_no_email])
+
+    assert result["sent"] == 1
+    assert result["skipped_no_email"] == 1
