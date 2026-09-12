@@ -2121,29 +2121,73 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
         try:
             data = json.loads(request.body.decode())
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return HttpResponseBadRequest("Invalid JSON body.")
+            return JsonResponse(
+                {"detail": "The request could not be processed. Please try again."},
+                status=400,
+            )
         event = request.event
         with scope(event=event):
             shift_id = data.get("shift_id")
             user_id = data.get("user_id")
+            role_id_provided = "role_id" in data
             role_id = data.get("role_id")
+
+            if role_id_provided:
+                if isinstance(role_id, bool):
+                    return JsonResponse(
+                        {"detail": "Invalid role_id."},
+                        status=400,
+                    )
+                if isinstance(role_id, str):
+                    if not role_id.isascii() or not role_id.isdigit():
+                        return JsonResponse(
+                            {"detail": "Invalid role_id."},
+                            status=400,
+                        )
+                    role_id = int(role_id)
+                elif not isinstance(role_id, int):
+                    return JsonResponse(
+                        {"detail": "Invalid role_id."},
+                        status=400,
+                    )
 
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
 
+            if role_id_provided and not can_act_on_role(
+                request.user,
+                request.organizer,
+                event,
+                role_id,
+                request=request,
+            ):
+                return JsonResponse(
+                    {"detail": "You cannot assign members to this role."},
+                    status=400,
+                )
+
             if not TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED, user_id=user_id).exists():
-                return HttpResponseBadRequest("User is not an accepted team member for this event.")
+                return JsonResponse(
+                    {"detail": "User is not an accepted team member for this event."},
+                    status=400,
+                )
             user = get_object_or_404(User, pk=user_id)
 
-            if role_id and not shift.role_assignments.filter(role_id=role_id).exists():
-                return HttpResponseBadRequest("Role is not configured for this shift.")
+            if role_id_provided and not shift.role_assignments.filter(role_id=role_id).exists():
+                return JsonResponse(
+                    {"detail": "Role is not configured for this shift."},
+                    status=400,
+                )
 
             # Capacity check: ensure assignment won't exceed role capacity
-            if role_id:
+            if role_id_provided:
                 role_assignment = shift.role_assignments.filter(role_id=role_id).first()
                 if role_assignment:
                     current_count = ShiftAssignment.objects.filter(shift=shift, role_id=role_id).exclude(team_member=user).count()
                     if current_count >= role_assignment.capacity:
-                        return HttpResponseBadRequest("Role capacity has been reached for this shift.")
+                        return JsonResponse(
+                            {"detail": "Role capacity has been reached for this shift."},
+                            status=400,
+                        )
 
             if shift.start_time and shift.end_time:
                 conflicting = (
@@ -2158,7 +2202,10 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                     .first()
                 )
                 if conflicting:
-                    return HttpResponseBadRequest("Member is already assigned to another shift during this time.")
+                    return JsonResponse(
+                        {"detail": "Member is already assigned to another shift during this time."},
+                        status=400,
+                    )
 
             ShiftAssignment.objects.update_or_create(
                 shift=shift,
@@ -2173,8 +2220,29 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
             shift_id = request.GET.get("shift_id")
             user_id = request.GET.get("user_id")
             role_id = request.GET.get("role_id")
+            role_id_provided = role_id is not None
+
+            if role_id_provided:
+                try:
+                    role_id = int(role_id)
+                except (TypeError, ValueError):
+                    return JsonResponse(
+                        {"detail": "Invalid role_id."},
+                        status=400,
+                    )
 
             shift = get_object_or_404(Shift, pk=shift_id, event=event)
+            if role_id_provided and not can_act_on_role(
+                request.user,
+                request.organizer,
+                event,
+                role_id,
+                request=request,
+            ):
+                return JsonResponse(
+                    {"detail": "You cannot unassign members from this role."},
+                    status=400,
+                )
             assignment = ShiftAssignment.objects.filter(shift=shift, team_member_id=user_id, role_id=role_id).first()
             if assignment:
                 assignment.delete()
