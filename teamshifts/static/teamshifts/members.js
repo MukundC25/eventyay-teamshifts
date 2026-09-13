@@ -38,16 +38,6 @@ function restoreButtonChildren(button, originalChildren) {
     button.replaceChildren(...originalChildren);
 }
 
-function updateBulkActionBar() {
-    const bar = document.getElementById("bulk-action-bar");
-    const countEl = document.getElementById("selected-count");
-    if (!bar || !countEl) return;
-
-    const checked = document.querySelectorAll(".member-checkbox:checked");
-    countEl.textContent = checked.length;
-    bar.style.display = checked.length > 0 ? "" : "none";
-}
-
 function submitBulkVouchers() {
     const form = document.getElementById("bulk-voucher-form");
     if (!form) return;
@@ -56,6 +46,11 @@ function submitBulkVouchers() {
     form.querySelectorAll('input[name="member_ids"]').forEach((el) => el.remove());
 
     const checked = document.querySelectorAll(".member-checkbox:checked");
+    if (checked.length === 0) {
+        alert(gettext("Select at least one member."));
+        return;
+    }
+
     checked.forEach((cb) => {
         const hidden = document.createElement("input");
         hidden.type = "hidden";
@@ -64,13 +59,10 @@ function submitBulkVouchers() {
         form.appendChild(hidden);
     });
 
-    if (checked.length > 0) {
-        form.submit();
-    }
+    form.submit();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Arrived toggle (AJAX)
     document.querySelectorAll(".toggle-arrived-form").forEach((form) => {
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
@@ -97,7 +89,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Bulk voucher checkboxes
     const selectAll = document.getElementById("select-all");
     const checkboxes = document.querySelectorAll(".member-checkbox");
 
@@ -106,13 +97,11 @@ document.addEventListener("DOMContentLoaded", () => {
             checkboxes.forEach((cb) => {
                 cb.checked = selectAll.checked;
             });
-            updateBulkActionBar();
         });
 
         checkboxes.forEach((cb) => {
             cb.addEventListener("change", () => {
                 selectAll.checked = Array.from(checkboxes).every((c) => c.checked);
-                updateBulkActionBar();
             });
         });
     }

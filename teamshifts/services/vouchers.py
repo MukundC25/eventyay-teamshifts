@@ -16,6 +16,8 @@ from ..models import (
     EmailTemplateRoles,
     MemberVoucher,
     TeamMemberApplication,
+    TeamShiftsEmailQueue,
+    TeamShiftsEmailQueueRecipient,
     VolunteerVoucherSettings,
     VoucherStatus,
 )
@@ -142,7 +144,6 @@ def _claim_next_voucher(settings: VolunteerVoucherSettings, assigned_voucher_ids
 
 
 def _send_voucher_email(event, user, voucher, template, locale) -> bool:
-    """Send the voucher email directly. Returns True on success, False on failure."""
     redeem_base = build_absolute_uri(event, "presale:event.index")
     ticket_claim_url = f"{redeem_base}?voucher={voucher.code}"
 
@@ -168,4 +169,21 @@ def _send_voucher_email(event, user, voucher, template, locale) -> bool:
     except SendMailException:
         logger.exception("[TeamShifts] Failed to send voucher email to %s", user.email)
         return False
+
+    with scope(event=event):
+        sent_now = now()
+        queue = TeamShiftsEmailQueue.objects.create(
+            event=event,
+            user=user,
+            subject=template.subject,
+            message=template.body,
+            locale=locale or "",
+            sent_at=sent_now,
+        )
+        TeamShiftsEmailQueueRecipient.objects.create(
+            queue=queue,
+            user=user,
+            email=user.email,
+            sent_at=sent_now,
+        )
     return True

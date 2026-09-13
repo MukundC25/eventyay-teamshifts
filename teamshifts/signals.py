@@ -147,8 +147,8 @@ def teamshifts_mail_placeholders(sender, **kwargs):
         SimpleFunctionalMailTextPlaceholder(
             "shift_schedule_url",
             ["event"],
-            lambda event: build_absolute_uri(event, "presale:event.index"),
-            lambda event: "https://example.com/my-event/",
+            lambda event: build_absolute_uri(event, "plugins:teamshifts:public_shift_schedule"),
+            lambda event: "https://example.com/fossasia/my-event/teamshifts/shifts/",
         ),
         SimpleFunctionalMailTextPlaceholder(
             "voucher_code",

@@ -14,6 +14,12 @@
 {% endblock %}
 
 {% block teamshifts_content %}
+  {% if vouchers_enabled %}
+    <form method='post' action='{% url "plugins:teamshifts:bulk_send_vouchers" organizer=request.organizer.slug event=request.event.slug %}' id='bulk-voucher-form' class='ts-hidden'>
+      {% csrf_token %}
+    </form>
+  {% endif %}
+
   <div class='teamshifts-filter-bar clearfix'>
     <form method='get' class='form-inline pull-left'>
       <div class='form-group'>
@@ -30,44 +36,27 @@
       <button type='submit' class='btn btn-default'>{% trans 'Filter' %}</button>
     </form>
 
-    {% if can_add_member %}
-      <div class='pull-right'>
+    <div class='pull-right'>
+      {% if vouchers_enabled %}
+        <button type='button' class='btn btn-primary' id='bulk-send-btn'
+          {% if voucher_batch_empty %}title='{% trans "Voucher batch is empty — only resends are possible. Add more codes in Tickets → Vouchers." %}'{% endif %}>
+          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
+        </button>
+      {% elif vouchers_not_configured %}
+        <button type='button' class='btn btn-primary' disabled
+          title='{% trans "Configure a voucher batch in settings first." %}'>
+          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
+        </button>
+      {% endif %}
+      {% if can_add_member %}
         <a href='{% url "plugins:teamshifts:member_add" organizer=request.organizer.slug event=request.event.slug %}' class='btn btn-primary'>
           <i class='fa fa-plus'></i> {% trans 'Add member' %}
         </a>
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
 
-  {% if vouchers_enabled %}
-    <form method='post' action='{% url "plugins:teamshifts:bulk_send_vouchers" organizer=request.organizer.slug event=request.event.slug %}' id='bulk-voucher-form' style='display:none;'>
-      {% csrf_token %}
-    </form>
-  {% endif %}
-
   {% if members %}
-    {% if vouchers_enabled %}
-      <div class='bulk-action-bar' id='bulk-action-bar' style='display:none;'>
-        <span id='selected-count'>0</span> {% trans 'selected' %} —
-        <button type='button' class='btn btn-sm btn-success' id='bulk-send-btn'>
-          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
-        </button>
-        {% if voucher_batch_empty %}
-          <span class='text-warning'>
-            <i class='fa fa-exclamation-triangle'></i>
-            {% trans 'Voucher batch is empty — only resends are possible. Add more codes in Tickets → Vouchers.' %}
-          </span>
-        {% endif %}
-      </div>
-    {% elif vouchers_not_configured %}
-      <div class='bulk-action-bar' id='bulk-action-bar' style='display:none;'>
-        <span id='selected-count'>0</span> {% trans 'selected' %} —
-        <button type='button' class='btn btn-sm btn-default' disabled title='{% trans "Configure a voucher batch in settings first." %}'>
-          <i class='fa fa-ticket'></i> {% trans 'Send voucher' %}
-        </button>
-      </div>
-    {% endif %}
-
     <div class='table-responsive'>
       <table class='table table-hover table-quotas'>
         <thead>

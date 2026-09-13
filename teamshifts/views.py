@@ -29,6 +29,7 @@ from eventyay.base.i18n import LazyI18nString
 from eventyay.base.models import User
 from eventyay.base.templatetags.rich_text import rich_text
 from eventyay.control.views import PaginationMixin
+from eventyay.multidomain.urlreverse import build_absolute_uri
 
 from .forms import (
     BaseShiftRoleFormSet,
@@ -75,6 +76,17 @@ from .services.members import AlreadyMemberError, add_member_from_organizer
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
+
+_TEMPLATE_PLACEHOLDERS = [
+    ("{full_name}", _("The applicant's full name")),
+    ("{event_name}", _("The event's name")),
+    ("{role_name}", _("The role applied for")),
+    ("{event_dates}", _("The event's date range")),
+    ("{event_location}", _("The event's location")),
+    ("{shift_schedule_url}", _("Link to the shift schedule")),
+    ("{voucher_code}", _("The volunteer's voucher code (voucher emails only)")),
+    ("{ticket_claim_url}", _("Link to claim the ticket (voucher emails only)")),
+]
 
 
 ShiftRoleFormSet = inlineformset_factory(Shift, ShiftRoleAssignment, form=ShiftRoleAssignmentForm, formset=BaseShiftRoleFormSet, extra=1, can_delete=True)
@@ -426,14 +438,7 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                 "panels": panels,
                 "custom_panels": custom_panels,
                 "locales": request.event.settings.locales,
-                "email_placeholders": [
-                    ("{full_name}", _("The applicant's full name")),
-                    ("{event_name}", _("The event's name")),
-                    ("{role_name}", _("The role applied for")),
-                    ("{event_dates}", _("The event's date range")),
-                    ("{event_location}", _("The event's location")),
-                    ("{shift_schedule_url}", _("Link to the shift schedule")),
-                ],
+                "email_placeholders": _TEMPLATE_PLACEHOLDERS,
             },
         )
 
@@ -467,14 +472,7 @@ class EmailTemplateListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                 "panels": panels,
                 "custom_panels": custom_panels,
                 "locales": request.event.settings.locales,
-                "email_placeholders": [
-                    ("{full_name}", _("The applicant's full name")),
-                    ("{event_name}", _("The event's name")),
-                    ("{role_name}", _("The role applied for")),
-                    ("{event_dates}", _("The event's date range")),
-                    ("{event_location}", _("The event's location")),
-                    ("{shift_schedule_url}", _("Link to the shift schedule")),
-                ],
+                "email_placeholders": _TEMPLATE_PLACEHOLDERS,
             },
         )
 
@@ -502,7 +500,9 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "role_name": "Volunteer",
                 "event_dates": event.get_date_range_display(),
                 "event_location": str(event.location) if event.location else "",
-                "shift_schedule_url": "https://example.com/my-event/shifts/",
+                "shift_schedule_url": build_absolute_uri(event, "plugins:teamshifts:public_shift_schedule"),
+                "voucher_code": "ABCD-1234-EFGH",
+                "ticket_claim_url": build_absolute_uri(event, "presale:event.index") + "?voucher=ABCD-1234-EFGH",
             },
         )
 

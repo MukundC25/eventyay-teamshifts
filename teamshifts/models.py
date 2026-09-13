@@ -158,15 +158,32 @@ class CallForTeamMembers(models.Model):
 
         try:
             with scope(event=self.event):
-                return self.event.teamshifts_email_templates.get(role=role)
+                template = self.event.teamshifts_email_templates.get(role=role)
+            default_subject, default_text = get_default_template(role)
+            stored_subject = template.subject.data if isinstance(template.subject, LazyI18nString) else {}
+            stored_body = template.body.data if isinstance(template.body, LazyI18nString) else {}
+            missing_locales = [loc for loc in self.event.locales if loc and not stored_subject.get(loc)]
+            if missing_locales:
+                fallback_subject = str(default_subject.localize("en") or default_subject)
+                fallback_body = str(default_text.localize("en") or default_text)
+                for locale in missing_locales:
+                    stored_subject[locale] = str(default_subject.localize(locale)) or fallback_subject
+                    stored_body[locale] = str(default_text.localize(locale)) or fallback_body
+                template.subject = LazyI18nString(stored_subject)
+                template.body = LazyI18nString(stored_body)
+                with scope(event=self.event):
+                    template.save(update_fields=["subject", "body"])
+            return template
         except TeamShiftsEmailTemplate.DoesNotExist:
             default_subject, default_text = get_default_template(role)
+            fallback_subject = str(default_subject.localize("en") or default_subject)
+            fallback_body = str(default_text.localize("en") or default_text)
             subject_data = {}
             body_data = {}
             for locale in self.event.locales:
                 if locale:
-                    subject_data[locale] = str(default_subject.localize(locale))
-                    body_data[locale] = str(default_text.localize(locale))
+                    subject_data[locale] = str(default_subject.localize(locale)) or fallback_subject
+                    body_data[locale] = str(default_text.localize(locale)) or fallback_body
             subject = LazyI18nString(subject_data) if subject_data else default_subject
             body = LazyI18nString(body_data) if body_data else default_text
             with scope(event=self.event):
