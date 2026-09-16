@@ -50,19 +50,8 @@ def cert_settings(event):
         )
 
 
-# ---------------------------------------------------------------------------
-# _send_certificate_email unit tests
-#
-# We test the helper directly (not via generate_certificate) because
-# transaction.on_commit never fires inside non-transactional django_db tests.
-# mail_send_task is imported at the top of services/certificates.py so it
-# must be patched as: teamshifts.services.certificates.mail_send_task.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 def test_send_certificate_email_calls_mail_task(event, application, cert_settings):
-    """_send_certificate_email dispatches mail_send_task with the PDF attached."""
     with scope(event=event):
         MemberCertificate.objects.get_or_create(application=application)
 
@@ -74,7 +63,6 @@ def test_send_certificate_email_calls_mail_task(event, application, cert_setting
 
     mock_task.apply_async.assert_called_once()
     kwargs = mock_task.apply_async.call_args.kwargs["kwargs"]
-
     assert kwargs["to"] == [application.user.email]
     assert kwargs["attach_file_name"] == f"{event.slug}-jane-volunteer.pdf"
     assert kwargs["attach_file_base64"]
@@ -83,11 +71,6 @@ def test_send_certificate_email_calls_mail_task(event, application, cert_setting
 
 @pytest.mark.django_db
 def test_send_certificate_email_stamps_notified_at(event, application, cert_settings):
-    """notified_at is stamped atomically inside generate_certificate before on_commit fires.
-
-    _send_certificate_email no longer stamps it — this test verifies the
-    generate_certificate path sets notified_at and the callback is registered.
-    """
     captured = []
     with patch("teamshifts.services.certificates.transaction.on_commit", side_effect=lambda fn: captured.append(fn)):
         with scope(event=event):
@@ -95,15 +78,12 @@ def test_send_certificate_email_stamps_notified_at(event, application, cert_sett
 
     with scope(event=event):
         cert = MemberCertificate.objects.get(application=application)
-    # notified_at is stamped atomically within generate_certificate
     assert cert.notified_at is not None
-    # on_commit callback was registered
     assert len(captured) == 1
 
 
 @pytest.mark.django_db
 def test_send_skipped_when_no_email(event, application, cert_settings):
-    """_send_certificate_email is a no-op when the user has no email address."""
     application.user.email = ""
     application.user.save(update_fields=["email"])
 
@@ -116,8 +96,6 @@ def test_send_skipped_when_no_email(event, application, cert_settings):
 
 @pytest.mark.django_db
 def test_send_skipped_when_no_cfm(event, application):
-    """_send_certificate_email skips sending when cfm lookup raises any exception."""
-    # Patch the cfm lookup to raise, simulating a missing CallForTeamMembers
     with (
         patch.object(
             application.event.__class__,
@@ -131,18 +109,8 @@ def test_send_skipped_when_no_cfm(event, application):
     mock_task.apply_async.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# generate_certificate idempotency guard
-#
-# We patch transaction.on_commit to capture (but not execute) the callback,
-# so we can assert it was registered exactly once on first generation and
-# zero times on re-generation.
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 def test_generate_certificate_registers_email_on_first_gen(event, application, cert_settings):
-    """generate_certificate atomically stamps notified_at and registers on_commit on first gen."""
     captured = []
     with patch("teamshifts.services.certificates.transaction.on_commit", side_effect=lambda fn: captured.append(fn)):
         with scope(event=event):
@@ -150,16 +118,12 @@ def test_generate_certificate_registers_email_on_first_gen(event, application, c
 
     with scope(event=event):
         cert = MemberCertificate.objects.get(application=application)
-
-    # on_commit callback registered exactly once
     assert len(captured) == 1
-    # notified_at is already stamped atomically (before on_commit fires)
     assert cert.notified_at is not None
 
 
 @pytest.mark.django_db
 def test_generate_certificate_skips_email_on_regen(event, application, cert_settings):
-    """generate_certificate does NOT register on_commit when notified_at is already set."""
     with scope(event=event):
         cert, _ = MemberCertificate.objects.get_or_create(application=application)
         cert.notified_at = now()
@@ -173,20 +137,13 @@ def test_generate_certificate_skips_email_on_regen(event, application, cert_sett
     assert len(captured) == 0
 
 
-# ---------------------------------------------------------------------------
-# Template and role resolution
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 def test_certificate_generated_role_value():
-    """EmailTemplateRoles.CERTIFICATE_GENERATED has the expected string value."""
     assert EmailTemplateRoles.CERTIFICATE_GENERATED == "teamshifts.certificate.generated"
 
 
 @pytest.mark.django_db
 def test_default_template_resolves_for_certificate():
-    """get_default_template returns a non-empty subject/body for CERTIFICATE_GENERATED."""
     subject, body = get_default_template(EmailTemplateRoles.CERTIFICATE_GENERATED)
     assert subject is not None
     body_str = str(body)
@@ -196,7 +153,6 @@ def test_default_template_resolves_for_certificate():
 
 @pytest.mark.django_db
 def test_get_mail_template_auto_creates_certificate_template(event, application):
-    """cfm.get_mail_template auto-creates the certificate template from defaults."""
     with scope(event=event):
         cfm, _ = CallForTeamMembers.objects.get_or_create(event=event)
         template = cfm.get_mail_template(EmailTemplateRoles.CERTIFICATE_GENERATED)

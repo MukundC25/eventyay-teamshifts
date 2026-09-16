@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0020_certificate_settings"),
+        ("teamshifts", "0021_volunteer_vouchers"),
     ]
 
     operations = [
@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                     ("teamshifts.application.accepted", "Application accepted"),
                     ("teamshifts.application.rejected", "Application rejected"),
                     ("teamshifts.member.added_by_organizer", "Added as volunteer by organizer"),
+                    ("teamshifts.voucher.sent", "Voucher sent to volunteer"),
                     ("teamshifts.certificate.generated", "Certificate of participation generated"),
                 ],
                 max_length=40,
