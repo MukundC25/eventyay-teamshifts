@@ -175,12 +175,12 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
         subject = str(LazyI18nString(template.subject).localize(locale))
         try:
             subject = subject.format_map(context)
-        except KeyError:
+        except (KeyError, ValueError):
             pass
         body_template = LazyI18nString(template.body).localize(locale)
         try:
             body = str(body_template).format_map(context)
-        except KeyError:
+        except (KeyError, ValueError):
             body = str(body_template)
 
         sender = event.settings.mail_from
@@ -203,6 +203,8 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
         )
         logger.info("[TeamShifts] Certificate email queued for application %s", application.pk)
     except Exception:
+        with scope(event=event):
+            MemberCertificate.objects.filter(application=application).update(notified_at=None)
         logger.exception("[TeamShifts] Failed to queue certificate email for application %s", application.pk)
 
 
