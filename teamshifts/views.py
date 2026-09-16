@@ -5,6 +5,7 @@ import re
 import secrets
 from collections import defaultdict
 from datetime import timedelta
+from urllib.parse import urlencode
 
 import dateutil.parser
 from django.contrib import messages
@@ -988,7 +989,7 @@ class PublicApplyView(FormView):
                 "cfp:event.login",
                 kwargs={"organizer": self.organizer.slug, "event": self.event.slug},
             )
-            return redirect(f"{login_url}?next={self.request.get_full_path()}")
+            return redirect(f"{login_url}?{urlencode({'next': self.request.get_full_path()})}")
         event = self.event
         if self.cfm is None or not self.cfm.is_open:
             messages.error(self.request, _("Applications are not currently open for this event."))
