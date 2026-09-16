@@ -73,7 +73,7 @@ def test_send_certificate_email_calls_mail_task(event, application, cert_setting
 def test_send_certificate_email_stamps_notified_at(event, application, cert_settings):
     captured = []
     with patch("teamshifts.services.certificates.transaction.on_commit", side_effect=lambda fn: captured.append(fn)):
-        with scope(event=event):
+        with scope(event=event, organizer=event.organizer):
             generate_certificate(application, cert_settings)
 
     with scope(event=event):
@@ -113,7 +113,7 @@ def test_send_skipped_when_no_cfm(event, application):
 def test_generate_certificate_registers_email_on_first_gen(event, application, cert_settings):
     captured = []
     with patch("teamshifts.services.certificates.transaction.on_commit", side_effect=lambda fn: captured.append(fn)):
-        with scope(event=event):
+        with scope(event=event, organizer=event.organizer):
             generate_certificate(application, cert_settings)
 
     with scope(event=event):
@@ -131,7 +131,7 @@ def test_generate_certificate_skips_email_on_regen(event, application, cert_sett
 
     captured = []
     with patch("teamshifts.services.certificates.transaction.on_commit", side_effect=lambda fn: captured.append(fn)):
-        with scope(event=event):
+        with scope(event=event, organizer=event.organizer):
             generate_certificate(application, cert_settings)
 
     assert len(captured) == 0
