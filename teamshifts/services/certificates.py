@@ -137,19 +137,17 @@ def certificate_filename(application: TeamMemberApplication) -> str:
 def generate_certificate(application: TeamMemberApplication, settings: CertificateSettings | None = None) -> MemberCertificate:
     settings = settings or get_certificate_settings(application.event)
     pdf_bytes = render_certificate_pdf(settings, application_context(application))
-    is_first_generation = False
     with scope(event=application.event):
         certificate, _created = MemberCertificate.objects.get_or_create(application=application)
-        if certificate.notified_at is None:
-            is_first_generation = True
         if certificate.file:
             certificate.file.delete(save=False)
         certificate.file.save(certificate_filename(application), ContentFile(pdf_bytes), save=False)
         certificate.generated_at = now()
         certificate.downloaded_at = None
         certificate.save()
+        claimed = MemberCertificate.objects.filter(pk=certificate.pk, notified_at__isnull=True).update(notified_at=now())
 
-    if is_first_generation:
+    if claimed:
         transaction.on_commit(lambda: _send_certificate_email(application, pdf_bytes))
 
     return certificate
@@ -175,8 +173,15 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
     with language(locale, event.settings.region):
         context = get_email_context(event=event, user=user)
         subject = str(LazyI18nString(template.subject).localize(locale))
+        try:
+            subject = subject.format_map(context)
+        except KeyError:
+            pass
         body_template = LazyI18nString(template.body).localize(locale)
-        body = str(body_template).format_map(context)
+        try:
+            body = str(body_template).format_map(context)
+        except KeyError:
+            body = str(body_template)
 
         sender = event.settings.mail_from
         event_backend = event.get_mail_backend()
@@ -196,8 +201,6 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
                 "attach_file_name": certificate_filename(application),
             }
         )
-        with scope(event=event):
-            MemberCertificate.objects.filter(application=application).update(notified_at=now())
         logger.info("[TeamShifts] Certificate email queued for application %s", application.pk)
     except Exception:
         logger.exception("[TeamShifts] Failed to queue certificate email for application %s", application.pk)
