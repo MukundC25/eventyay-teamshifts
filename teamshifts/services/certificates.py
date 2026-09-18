@@ -1,9 +1,10 @@
-import base64
 import json
 import logging
 import zipfile
+from datetime import timedelta
 from io import BytesIO
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.formats import date_format
@@ -12,8 +13,8 @@ from django.utils.timezone import now
 from django.utils.translation import gettext
 from django_scopes import scope
 from eventyay.base.email import get_email_context
-from eventyay.base.i18n import language
-from eventyay.base.services.mail import mail_send_task
+from eventyay.base.models import CachedFile
+from eventyay.base.services.mail import mail
 from i18nfield.strings import LazyI18nString
 
 from ..models import (
@@ -163,43 +164,35 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
 
     try:
         cfm = event.call_for_team_members
-    except Exception:
+    except ObjectDoesNotExist:
         logger.warning("[TeamShifts] No CFM for event %s — skipping certificate email", event.slug)
         return
 
     template = cfm.get_mail_template(EmailTemplateRoles.CERTIFICATE_GENERATED)
     locale = user.locale or event.settings.locale
 
-    with language(locale, event.settings.region):
-        context = get_email_context(event=event, user=user)
-        subject = str(LazyI18nString(template.subject).localize(locale))
-        try:
-            subject = subject.format_map(context)
-        except (KeyError, ValueError):
-            pass
-        body_template = LazyI18nString(template.body).localize(locale)
-        try:
-            body = str(body_template).format_map(context)
-        except (KeyError, ValueError):
-            body = str(body_template)
+    context = get_email_context(event=event, user=user)
+    subject = LazyI18nString(template.subject)
+    body = LazyI18nString(template.body)
 
-        sender = event.settings.mail_from
-        event_backend = event.get_mail_backend()
-        sender = event_backend.from_address if hasattr(event_backend, "from_address") else sender
+    cf = CachedFile.objects.create(
+        filename=certificate_filename(application),
+        type="application/pdf",
+        expires=now() + timedelta(hours=1),
+    )
+    cf.file.save(certificate_filename(application), ContentFile(pdf_bytes), save=True)
 
     try:
-        mail_send_task.apply_async(
-            kwargs={
-                "to": [user.email],
-                "subject": subject,
-                "body": body,
-                "html": None,
-                "sender": sender or event.settings.mail_from,
-                "event": event.pk,
-                "user": user.pk,
-                "attach_file_base64": base64.b64encode(pdf_bytes).decode(),
-                "attach_file_name": certificate_filename(application),
-            }
+        mail(
+            email=user.email,
+            subject=subject,
+            template=body,
+            context=context,
+            event=event,
+            locale=locale,
+            user=user,
+            attach_cached_files=[cf.pk],
+            auto_email=False,
         )
         logger.info("[TeamShifts] Certificate email queued for application %s", application.pk)
     except Exception:

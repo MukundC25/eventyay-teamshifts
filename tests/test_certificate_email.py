@@ -51,22 +51,20 @@ def cert_settings(event):
 
 
 @pytest.mark.django_db
-def test_send_certificate_email_calls_mail_task(event, application, cert_settings):
+def test_send_certificate_email_calls_mail(event, application, cert_settings):
     with scope(event=event):
         MemberCertificate.objects.get_or_create(application=application)
 
-    pdf_bytes = b"%PDF-1.4 fake content"
-
-    with patch("teamshifts.services.certificates.mail_send_task") as mock_task:
+    with patch("teamshifts.services.certificates.mail") as mock_mail:
         with scope(event=event):
-            _send_certificate_email(application, pdf_bytes)
+            _send_certificate_email(application, b"%PDF-1.4 fake content")
 
-    mock_task.apply_async.assert_called_once()
-    kwargs = mock_task.apply_async.call_args.kwargs["kwargs"]
-    assert kwargs["to"] == [application.user.email]
-    assert kwargs["attach_file_name"] == f"{event.slug}-jane-volunteer.pdf"
-    assert kwargs["attach_file_base64"]
-    assert kwargs["event"] == event.pk
+    mock_mail.assert_called_once()
+    call_kwargs = mock_mail.call_args.kwargs
+    assert call_kwargs["email"] == application.user.email
+    assert call_kwargs["event"] == event
+    assert call_kwargs["user"] == application.user
+    assert call_kwargs["attach_cached_files"]
 
 
 @pytest.mark.django_db
@@ -87,26 +85,28 @@ def test_send_skipped_when_no_email(event, application, cert_settings):
     application.user.email = ""
     application.user.save(update_fields=["email"])
 
-    with patch("teamshifts.services.certificates.mail_send_task") as mock_task:
+    with patch("teamshifts.services.certificates.mail") as mock_mail:
         with scope(event=event):
             _send_certificate_email(application, b"%PDF-fake")
 
-    mock_task.apply_async.assert_not_called()
+    mock_mail.assert_not_called()
 
 
 @pytest.mark.django_db
 def test_send_skipped_when_no_cfm(event, application):
+    from teamshifts.models import CallForTeamMembers
+
     with (
         patch.object(
             application.event.__class__,
             "call_for_team_members",
-            new_callable=lambda: property(lambda _: (_ for _ in ()).throw(Exception("no cfm"))),
+            new_callable=lambda: property(lambda _: (_ for _ in ()).throw(CallForTeamMembers.DoesNotExist)),
         ),
-        patch("teamshifts.services.certificates.mail_send_task") as mock_task,
+        patch("teamshifts.services.certificates.mail") as mock_mail,
     ):
         _send_certificate_email(application, b"%PDF-fake")
 
-    mock_task.apply_async.assert_not_called()
+    mock_mail.assert_not_called()
 
 
 @pytest.mark.django_db
