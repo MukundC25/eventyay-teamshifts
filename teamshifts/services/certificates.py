@@ -175,14 +175,13 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
     subject = LazyI18nString(template.subject)
     body = LazyI18nString(template.body)
 
-    cf = CachedFile.objects.create(
-        filename=certificate_filename(application),
-        type="application/pdf",
-        expires=now() + timedelta(hours=1),
-    )
-    cf.file.save(certificate_filename(application), ContentFile(pdf_bytes), save=True)
-
     try:
+        cf = CachedFile.objects.create(
+            filename=certificate_filename(application),
+            type="application/pdf",
+            expires=now() + timedelta(hours=24),
+        )
+        cf.file.save(certificate_filename(application), ContentFile(pdf_bytes), save=True)
         mail(
             email=user.email,
             subject=subject,
