@@ -14,7 +14,7 @@ from django.utils.translation import gettext
 from django_scopes import scope
 from eventyay.base.email import get_email_context
 from eventyay.base.models import CachedFile
-from eventyay.base.services.mail import mail
+from eventyay.base.services.mail import SendMailException, mail
 from i18nfield.strings import LazyI18nString
 
 from ..models import (
@@ -194,7 +194,7 @@ def _send_certificate_email(application: TeamMemberApplication, pdf_bytes: bytes
             auto_email=False,
         )
         logger.info("[TeamShifts] Certificate email queued for application %s", application.pk)
-    except Exception:
+    except (OSError, SendMailException):
         with scope(event=event):
             MemberCertificate.objects.filter(application=application).update(notified_at=None)
         logger.exception("[TeamShifts] Failed to queue certificate email for application %s", application.pk)
