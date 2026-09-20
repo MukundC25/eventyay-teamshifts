@@ -2819,9 +2819,10 @@ class ShiftCheckOutView(PublicShiftScheduleMixin, View):
         event = self.event
         assignment_pk = kwargs["pk"]
 
-        with scope(event=event):
+        with scope(event=event), transaction.atomic():
             assignment = (
-                ShiftAssignment.objects.filter(
+                ShiftAssignment.objects.select_for_update()
+                .filter(
                     pk=assignment_pk,
                     team_member=request.user,
                     shift__event=event,

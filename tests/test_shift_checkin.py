@@ -190,6 +190,24 @@ class TestStampShiftStart:
         assert past_assignment.started_at is None
 
     @pytest.mark.django_db
+    def test_does_not_stamp_future_shift(self, event, volunteer, application, role):
+        future_shift = Shift.objects.create(
+            event=event,
+            name="Later today",
+            start_time=now() + timedelta(hours=1),
+            end_time=now() + timedelta(hours=3),
+        )
+        ShiftRoleAssignment.objects.create(shift=future_shift, role=role, capacity=5)
+        future_assignment = ShiftAssignment.objects.create(
+            shift=future_shift,
+            team_member=volunteer,
+            role=role,
+        )
+        stamp_shift_start(volunteer, event, now())
+        future_assignment.refresh_from_db()
+        assert future_assignment.started_at is None
+
+    @pytest.mark.django_db
     def test_does_not_overwrite_existing_start(self, event, volunteer, application, assignment):
         original_dt = now() - timedelta(hours=1)
         assignment.started_at = original_dt
