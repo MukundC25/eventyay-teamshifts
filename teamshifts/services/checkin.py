@@ -1,5 +1,4 @@
 import logging
-from datetime import timedelta
 
 from django_scopes import scope, scopes_disabled
 
@@ -7,8 +6,6 @@ from ..models import ApplicationStatus, MemberVoucher, ShiftAssignment, TeamMemb
 from .certificates import maybe_auto_issue_certificate
 
 logger = logging.getLogger(__name__)
-
-CHECKIN_WINDOW = timedelta(hours=1)
 
 
 def resolve_volunteer_application(checkin):
@@ -45,13 +42,13 @@ def resolve_volunteer_application(checkin):
 
 
 def stamp_shift_start(user, event, checkin_dt):
-    """Set started_at on shift assignments that overlap the check-in time."""
+    """Set started_at on shift assignments active at check-in time."""
     with scope(event=event):
         ShiftAssignment.objects.filter(
             team_member=user,
             shift__event=event,
             started_at__isnull=True,
-            shift__start_time__lte=checkin_dt + CHECKIN_WINDOW,
+            shift__start_time__lte=checkin_dt,
             shift__end_time__gte=checkin_dt,
         ).update(started_at=checkin_dt)
 

@@ -38,12 +38,16 @@ function setButtonDone(button) {
   button.appendChild(label)
 }
 
+function restoreButtonChildren(button, originalChildren) {
+  button.replaceChildren(...originalChildren)
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".shift-checkout-form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault()
       const button = form.querySelector("button")
-      const originalHTML = button.innerHTML
+      const originalChildren = Array.from(button.childNodes).map((n) => n.cloneNode(true))
       setButtonLoading(button)
 
       try {
@@ -51,15 +55,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data.status === "ok") {
           setButtonDone(button)
         } else {
-          button.innerHTML = originalHTML
-          button.disabled = false
+          restoreButtonChildren(button, originalChildren)
           alert(data.error || gettext("An error occurred."))
         }
       } catch (error) {
         console.error("Checkout failed", error)
-        button.innerHTML = originalHTML
-        button.disabled = false
+        restoreButtonChildren(button, originalChildren)
         alert(error.message || gettext("An error occurred."))
+      } finally {
+        button.disabled = false
       }
     })
   })
