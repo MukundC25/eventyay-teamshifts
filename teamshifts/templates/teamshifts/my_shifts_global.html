@@ -94,6 +94,7 @@
               <th>{% translate "Shift" %}</th>
               <th>{% translate "Role" %}</th>
               <th>{% translate "Location" %}</th>
+              <th>{% translate "Status" %}</th>
             </tr>
           </thead>
           <tbody>
@@ -126,6 +127,15 @@
                     {{ assignment.shift.location_text }}
                   {% else %}
                     —
+                  {% endif %}
+                </td>
+                <td data-label="{% translate 'Status' %}">
+                  {% if assignment.ended_at %}
+                    <span class="label label-success">{% translate "Completed" %}</span>
+                  {% elif assignment.started_at %}
+                    <span class="label label-primary">{% translate "Checked in" %}</span>
+                  {% else %}
+                    <span class="label label-default">{% translate "Pending" %}</span>
                   {% endif %}
                 </td>
               </tr>
