@@ -1335,7 +1335,12 @@ class ShiftLocationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
         with scope(event=request.event):
             locations = list(ShiftLocation.objects.filter(event=request.event).select_related("linked_room"))
             already_linked_room_ids = {loc.linked_room_id for loc in locations if loc.linked_room_id is not None}
-            importable_rooms = list(request.event.rooms.filter(deleted=False).exclude(pk__in=already_linked_room_ids).order_by("position", "pk"))
+            existing_names = {loc.name.lower() for loc in locations}
+            importable_rooms = [
+                room
+                for room in request.event.rooms.filter(deleted=False, is_unscheduled=False).exclude(pk__in=already_linked_room_ids).order_by("position", "pk")
+                if str(room.name).lower() not in existing_names
+            ]
         return render(
             request,
             self.template_name,
@@ -1542,6 +1547,8 @@ class ImportTalksRoomsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
         try:
             data = json.loads(request.body.decode("utf-8"))
             raw_ids = data.get("room_ids", [])
+            if not isinstance(raw_ids, list):
+                return HttpResponseBadRequest("'room_ids' must be an array.")
         except (json.JSONDecodeError, ValueError, AttributeError):
             raw_ids = request.POST.getlist("room_ids")
 
@@ -1572,7 +1579,7 @@ class ImportTalksRoomsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
                 imported_count = 0
                 for room in rooms:
                     room_name = str(room.name)
-                    existing_name = ShiftLocation.objects.filter(event=event, name=room_name).first()
+                    existing_name = ShiftLocation.objects.filter(event=event, name__iexact=room_name).first()
                     if existing_name and existing_name.linked_room_id is None:
                         existing_name.linked_room = room
                         existing_name.save(update_fields=["linked_room"])
@@ -2039,7 +2046,8 @@ class ShiftScheduleTalksAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredM
 
             locations = event.shift_locations.select_related("linked_room").all()
             for loc in locations:
-                data["rooms"].append(_serialize_location_room(loc))
+                if _location_is_available(loc):
+                    data["rooms"].append(_serialize_location_room(loc))
 
             shifts = event.shifts.all().prefetch_related(
                 "role_assignments__role",
@@ -2508,6 +2516,16 @@ def _serialize_location_room(loc: "ShiftLocation") -> dict:
     }
 
 
+def _location_is_available(loc: "ShiftLocation") -> bool:
+    """Return False if the location's linked talks Room is deleted or unscheduled."""
+    if loc.linked_room_id is None:
+        return True
+    room = loc.linked_room
+    if room is None:
+        return True
+    return not room.deleted and not room.is_unscheduled
+
+
 def _shift_talk_payload(shift):
     duration = int((shift.end_time - shift.start_time).total_seconds() / 60) if shift.end_time and shift.start_time else 0
     return {
@@ -2627,7 +2645,8 @@ class PublicShiftScheduleAPIView(PublicShiftScheduleMixin, View):
                 data["roles"].append({"id": role.id, "name": {"en": role.name}, "is_restricted": role.is_restricted})
 
             for loc in event.shift_locations.select_related("linked_room").all():
-                data["rooms"].append(_serialize_location_room(loc))
+                if _location_is_available(loc):
+                    data["rooms"].append(_serialize_location_room(loc))
 
             for shift in _public_shifts_queryset(event):
                 data["talks"].append(_shift_talk_payload(shift))
@@ -2652,7 +2671,7 @@ class PublicShiftScheduleView(PublicShiftScheduleMixin, TemplateView):
             locations = list(event.shift_locations.select_related("linked_room").all())
             shifts = list(_public_shifts_queryset(event))
 
-        rooms = [_serialize_location_room(loc) for loc in locations]
+        rooms = [_serialize_location_room(loc) for loc in locations if _location_is_available(loc)]
 
         schedule_data = {
             "mode": "shifts",

@@ -84,10 +84,20 @@
           {% for location in locations %}
             <tr data-dnd-id='{{ location.pk }}'>
               <td>
-                <strong>{{ location.name }}</strong>
+                <strong>
+                  {% if location.is_from_talks and location.linked_room %}
+                    {{ location.linked_room.name }}
+                  {% else %}
+                    {{ location.name }}
+                  {% endif %}
+                </strong>
                 {% if location.linked_room_deleted %}
                   <span class='label label-danger' title='{% trans "The linked Talks room has been deleted." %}'>
                     {% trans "Deleted in Talks" %}
+                  </span>
+                {% elif location.linked_room_unscheduled %}
+                  <span class='label label-warning' title='{% trans "The linked Talks room has been marked as unscheduled. Shifts in this location will appear as orphaned in the schedule editor." %}'>
+                    {% trans "Unscheduled in Talks" %}
                   </span>
                 {% endif %}
               </td>

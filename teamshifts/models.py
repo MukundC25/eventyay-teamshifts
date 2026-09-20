@@ -262,6 +262,19 @@ class ShiftLocation(models.Model):
         room = self.linked_room
         return room is not None and room.deleted
 
+    @property
+    def linked_room_unscheduled(self) -> bool:
+        """Whether the linked talks Room has been marked as unscheduled."""
+        if not self.is_from_talks:
+            return False
+        room = self.linked_room
+        return room is not None and room.is_unscheduled
+
+    @property
+    def linked_room_unavailable(self) -> bool:
+        """Whether the linked talks Room is deleted or unscheduled."""
+        return self.linked_room_deleted or self.linked_room_unscheduled
+
     def display_name(self, locale: str = "en") -> str:
         """Return the room name, resolving I18n from the linked talks Room if present."""
         if self.linked_room_id is not None and self.linked_room is not None:
