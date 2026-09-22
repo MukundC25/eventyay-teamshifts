@@ -1335,12 +1335,11 @@ class ShiftLocationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
         with scope(event=request.event):
             locations = list(ShiftLocation.objects.filter(event=request.event).select_related("linked_room"))
             already_linked_room_ids = {loc.linked_room_id for loc in locations if loc.linked_room_id is not None}
-            existing_names = {loc.name.lower() for loc in locations}
-            importable_rooms = [
-                room
-                for room in request.event.rooms.filter(deleted=False, is_unscheduled=False).exclude(pk__in=already_linked_room_ids).order_by("position", "pk")
-                if str(room.name).lower() not in existing_names
-            ]
+            importable_rooms = list(
+                request.event.rooms.filter(deleted=False, is_unscheduled=False)
+                .exclude(pk__in=already_linked_room_ids)
+                .order_by("position", "pk")
+            )
         return render(
             request,
             self.template_name,
@@ -1569,7 +1568,7 @@ class ImportTalksRoomsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin,
 
                 already_linked_room_ids = set(ShiftLocation.objects.filter(event=event, linked_room__isnull=False).values_list("linked_room_id", flat=True))
 
-                rooms = event.rooms.filter(deleted=False, pk__in=room_ids).exclude(pk__in=already_linked_room_ids)
+                rooms = event.rooms.filter(deleted=False, is_unscheduled=False, pk__in=room_ids).exclude(pk__in=already_linked_room_ids)
 
                 max_position = ShiftLocation.objects.filter(event=event).aggregate(
                     max_position=Max("position"),
