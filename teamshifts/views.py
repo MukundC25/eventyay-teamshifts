@@ -1336,9 +1336,7 @@ class ShiftLocationListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
             locations = list(ShiftLocation.objects.filter(event=request.event).select_related("linked_room"))
             already_linked_room_ids = {loc.linked_room_id for loc in locations if loc.linked_room_id is not None}
             importable_rooms = list(
-                request.event.rooms.filter(deleted=False, is_unscheduled=False)
-                .exclude(pk__in=already_linked_room_ids)
-                .order_by("position", "pk")
+                request.event.rooms.filter(deleted=False, is_unscheduled=False).exclude(pk__in=already_linked_room_ids).order_by("position", "pk")
             )
         return render(
             request,
