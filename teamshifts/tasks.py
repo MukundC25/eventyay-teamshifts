@@ -1,4 +1,5 @@
 import logging
+import re
 
 from celery.exceptions import MaxRetriesExceededError
 from django.core.cache import cache
@@ -15,6 +16,23 @@ from i18nfield.strings import LazyI18nString
 from .models import TeamShiftsEmailQueue
 
 logger = logging.getLogger(__name__)
+
+_TIPTAP_BLOCK_RE = re.compile(r"^\s*<(p|ul|ol|blockquote|h[1-6])(\s|>)", re.IGNORECASE)
+
+
+def _ensure_markdown_breaks(text: str) -> str:
+    if not text or "data-variable=" in text or _TIPTAP_BLOCK_RE.match(text):
+        return text
+    return re.sub(r"(?<!\n)(?<! {2})\n(?!\n)", "  \n", text)
+
+
+class _MarkdownBreakString(LazyI18nString):
+    def __init__(self, inner: LazyI18nString):
+        super().__init__(inner.data)
+
+    def __str__(self) -> str:
+        return _ensure_markdown_breaks(super().__str__())
+
 
 SCHEDULED_EMAIL_BATCH_SIZE = 50
 
@@ -81,7 +99,7 @@ def send_queued_email(self, event_id: int, queue_id: int):
                 return
 
             subject = LazyI18nString(queue.subject)
-            message = LazyI18nString(queue.message)
+            message = _MarkdownBreakString(LazyI18nString(queue.message))
             locale = queue.locale or event.settings.locale
 
             partial_send = False
