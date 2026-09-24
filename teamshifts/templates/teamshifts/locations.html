@@ -2,6 +2,12 @@
 {% load i18n %}
 {% load bootstrap3 %}
 {% load rich_text %}
+{% load static %}
+
+{% block custom_header %}
+  {{ block.super }}
+  <script type='module' src='{% static "teamshifts/locations.js" %}'></script>
+{% endblock %}
 
 {% block title %}{% trans "Locations" %} :: {{ request.event.name }}{% endblock %}
 
@@ -30,7 +36,7 @@
             <table class='table table-condensed'>
               <thead>
                 <tr>
-                  <th style='width: 40px'>
+                  <th class='teamshifts-select-all-col'>
                     <input type='checkbox' id='select-all-rooms' aria-label='{% trans "Select all rooms" %}'>
                   </th>
                   <th>{% trans "Room name" %}</th>
@@ -52,17 +58,6 @@
         </form>
       </div>
     </div>
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        var selectAll = document.getElementById('select-all-rooms')
-        if (selectAll) {
-          selectAll.addEventListener('change', function () {
-            var boxes = document.querySelectorAll('.room-checkbox')
-            for (var i = 0; i < boxes.length; i++) boxes[i].checked = selectAll.checked
-          })
-        }
-      })
-    </script>
   {% endif %}
 
   {% if not locations %}
