@@ -49,11 +49,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const button = form.querySelector("button")
       const originalChildren = Array.from(button.childNodes).map((n) => n.cloneNode(true))
       setButtonLoading(button)
+      let succeeded = false
 
       try {
         const data = await submitCheckout(form)
         if (data.status === "ok") {
           setButtonDone(button)
+          succeeded = true
         } else {
           restoreButtonChildren(button, originalChildren)
           alert(data.error || gettext("An error occurred."))
@@ -63,7 +65,9 @@ document.addEventListener("DOMContentLoaded", () => {
         restoreButtonChildren(button, originalChildren)
         alert(error.message || gettext("An error occurred."))
       } finally {
-        button.disabled = false
+        if (!succeeded) {
+          button.disabled = false
+        }
       }
     })
   })
