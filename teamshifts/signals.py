@@ -14,7 +14,7 @@ from eventyay.base.models.checkin import Checkin
 from eventyay.base.models.organizer import Team
 from eventyay.base.signals import checkin_created, register_mail_placeholders
 from eventyay.common.signals import periodic_task, user_menu_items
-from eventyay.control.signals import event_dashboard_components, event_dashboard_widgets, nav_global
+from eventyay.control.signals import event_dashboard_components, nav_event_common, nav_global
 from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
 
@@ -23,23 +23,6 @@ from .permissions import has_any_teamshifts_permission
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
-
-
-@receiver(event_dashboard_widgets, dispatch_uid="teamshifts_dashboard_widget")
-def teamshifts_dashboard_widget(sender, subevent=None, lazy=False, request=None, **kwargs):
-    if request is None or not has_any_teamshifts_permission(request.user, request.organizer, sender, request=request):
-        return []
-    return [
-        {
-            "content": '<div class="numwidget"><span class="num">-</span><span class="text">{}</span></div>'.format(str(_("TeamShifts"))),
-            "display_size": "small",
-            "priority": 80,
-            "url": reverse(
-                "plugins:teamshifts:dashboard",
-                kwargs={"organizer": sender.organizer.slug, "event": sender.slug},
-            ),
-        }
-    ]
 
 
 @receiver(event_dashboard_components, dispatch_uid="teamshifts_dashboard_component")
@@ -61,6 +44,22 @@ def teamshifts_dashboard_component(sender, request=None, **kwargs):
         url,
         str(_("TeamShifts Dashboard")),
     )
+
+
+@receiver(nav_event_common, dispatch_uid="teamshifts_nav_event_common")
+def teamshifts_nav_event_common(sender, request=None, **kwargs):
+    if request is None or not has_any_teamshifts_permission(request.user, request.organizer, sender, request=request):
+        return []
+    url_kwargs = {"organizer": sender.organizer.slug, "event": sender.slug}
+    match = request.resolver_match
+    return [
+        {
+            "label": _("TeamShifts"),
+            "url": reverse("plugins:teamshifts:dashboard", kwargs=url_kwargs),
+            "icon": "users",
+            "active": bool(match and match.namespace == "plugins:teamshifts"),
+        }
+    ]
 
 
 @receiver(header_nav_tabs, dispatch_uid="teamshifts_header_nav_tab")
@@ -276,3 +275,45 @@ def team_role_post_delete(sender, instance, **kwargs):
     for team in teams:
         team.limit_teamshifts_roles.remove(instance.pk)
         team.save(update_fields=["limit_teamshifts_roles"])
+
+
+# ---------------------------------------------------------------------------
+# Room ↔ ShiftLocation bridge signals
+# ---------------------------------------------------------------------------
+
+try:
+    from django.db.models.signals import post_save
+    from eventyay.base.models.room import Room
+
+    @receiver(post_save, sender=Room, dispatch_uid="teamshifts_sync_linked_room")
+    @scopes_disabled()
+    def sync_linked_shift_location(sender, instance, **kwargs):
+        """Keep the linked ShiftLocation name in sync when a talks Room is renamed.
+
+        The ShiftLocation.name (CharField) stores the display-language string
+        from the Room.name (I18nCharField). This runs on every Room save so the
+        teamshifts side stays current without manual intervention.
+        """
+        from .models import ShiftLocation
+
+        try:
+            location = ShiftLocation.objects.get(linked_room=instance)
+        except ShiftLocation.DoesNotExist:
+            return
+
+        new_name = str(instance.name)
+        if location.name != new_name:
+            # Check for name conflicts within the same event
+            conflict = ShiftLocation.objects.filter(event=instance.event, name=new_name).exclude(pk=location.pk).exists()
+            if not conflict:
+                location.name = new_name
+                location.save(update_fields=["name"])
+            else:
+                logger.warning(
+                    "Cannot sync Room rename to ShiftLocation %s: name '%s' conflicts with another location",
+                    location.pk,
+                    new_name,
+                )
+
+except ImportError:
+    pass
