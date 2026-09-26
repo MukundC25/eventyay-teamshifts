@@ -924,7 +924,9 @@ class ApplicationDetailView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                     "answers__question",
                     Prefetch(
                         "user__shift_assignments",
-                        queryset=ShiftAssignment.objects.filter(shift__event=event).select_related("role"),
+                        queryset=ShiftAssignment.objects.filter(shift__event=event)
+                        .select_related("role", "shift", "shift__location")
+                        .order_by("shift__start_time"),
                         to_attr="event_assignments",
                     ),
                 ),

@@ -49,7 +49,7 @@ def stamp_shift_start(user, event, checkin_dt):
             shift__event=event,
             started_at__isnull=True,
             shift__start_time__lte=checkin_dt,
-            shift__end_time__gte=checkin_dt,
+            shift__end_time__gt=checkin_dt,
         ).update(started_at=checkin_dt)
 
 

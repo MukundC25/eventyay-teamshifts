@@ -10,6 +10,7 @@
 {% block custom_header %}
   {{ block.super }}
   <link rel="stylesheet" type="text/css" href="{% static 'teamshifts/teamshifts.css' %}">
+  <script type="module" src="{% static 'teamshifts/shift_checkout.js' %}"></script>
 {% endblock %}
 
 {% block content %}
@@ -95,6 +96,7 @@
               <th>{% translate "Role" %}</th>
               <th>{% translate "Location" %}</th>
               <th>{% translate "Status" %}</th>
+              <th>{% translate "Actions" %}</th>
             </tr>
           </thead>
           <tbody>
@@ -136,6 +138,21 @@
                     <span class="label label-primary">{% translate "Checked in" %}</span>
                   {% else %}
                     <span class="label label-default">{% translate "Pending" %}</span>
+                  {% endif %}
+                </td>
+                <td data-label="{% translate 'Actions' %}">
+                  {% if assignment.started_at and not assignment.ended_at %}
+                    <form method="post"
+                          action="{% url 'plugins:teamshifts:shift_checkout' organizer=event.organizer.slug event=event.slug pk=assignment.pk %}"
+                          class="shift-checkout-form">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-warning btn-xs">
+                        <i class="fa fa-sign-out"></i>
+                        {% translate "Check out" %}
+                      </button>
+                    </form>
+                  {% else %}
+                    —
                   {% endif %}
                 </td>
               </tr>
