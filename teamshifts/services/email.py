@@ -127,6 +127,14 @@ def queue_shift_notification_email(
         logger.warning("[TeamShifts] No CFM found for event %s, skipping %s email", event.slug, template_role)
         return None
 
+    if not cfm.shift_schedule_published:
+        logger.info(
+            "[TeamShifts] Skipping %s email: shift schedule not published for event %s",
+            template_role,
+            event.slug,
+        )
+        return None
+
     template = cfm.get_mail_template(template_role)
 
     return queue_email(

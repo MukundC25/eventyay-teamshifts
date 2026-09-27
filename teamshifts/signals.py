@@ -122,7 +122,7 @@ def teamshifts_mail_placeholders(sender, **kwargs):
         SimpleFunctionalMailTextPlaceholder(
             "role_name",
             ["role"],
-            lambda role: role.name,
+            lambda role: role.name if role else _("no specific role"),
             lambda event: _("Volunteer role"),
         ),
         SimpleFunctionalMailTextPlaceholder(
@@ -158,7 +158,11 @@ def teamshifts_mail_placeholders(sender, **kwargs):
         SimpleFunctionalMailTextPlaceholder(
             "shift_time",
             ["shift"],
-            lambda shift: f"{shift.start_time:%Y-%m-%d %H:%M} – {shift.end_time:%H:%M}",
+            lambda shift: (
+                f"{shift.start_time:%Y-%m-%d %H:%M} – {shift.end_time:%H:%M}"
+                if shift.start_time.date() == shift.end_time.date()
+                else f"{shift.start_time:%Y-%m-%d %H:%M} – {shift.end_time:%Y-%m-%d %H:%M}"
+            ),
             lambda event: "2026-01-15 09:00 – 12:00",
         ),
         SimpleFunctionalMailTextPlaceholder(

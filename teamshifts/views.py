@@ -2340,21 +2340,33 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                         status=400,
                     )
 
+            previous_role_id = ShiftAssignment.objects.filter(shift=shift, team_member=user).values_list("role_id", flat=True).first()
             assignment, created = ShiftAssignment.objects.update_or_create(
                 shift=shift,
                 team_member=user,
                 defaults={"role_id": role_id, "assigned_by": request.user},
             )
-            role = TeamRole.objects.filter(pk=role_id).first() if role_id else None
-            transaction.on_commit(
-                lambda: queue_shift_notification_email(
-                    event=event,
-                    user=user,
-                    shift=shift,
-                    role=role,
-                    template_role=EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER,
-                )
-            )
+            if created or previous_role_id != role_id:
+                shift_role_assignment = shift.role_assignments.select_related("role").filter(role_id=role_id).first() if role_id else None
+                role = shift_role_assignment.role if shift_role_assignment else None
+
+                def _notify_assignment(event=event, user=user, shift=shift, role=role):
+                    try:
+                        queue_shift_notification_email(
+                            event=event,
+                            user=user,
+                            shift=shift,
+                            role=role,
+                            template_role=EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[TeamShifts] Failed to queue shift assignment notification for user %s, shift %s",
+                            user.pk,
+                            shift.pk,
+                        )
+
+                transaction.on_commit(_notify_assignment)
             return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
@@ -2770,15 +2782,24 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                     defaults={"role_id": sra.role_id, "assigned_by": None},
                 )
             if created:
-                transaction.on_commit(
-                    lambda: queue_shift_notification_email(
-                        event=event,
-                        user=request.user,
-                        shift=shift,
-                        role=sra.role,
-                        template_role=EmailTemplateRoles.SHIFT_CLAIMED_BY_VOLUNTEER,
-                    )
-                )
+
+                def _notify_claim(event=event, user=request.user, shift=shift, role=sra.role):
+                    try:
+                        queue_shift_notification_email(
+                            event=event,
+                            user=user,
+                            shift=shift,
+                            role=role,
+                            template_role=EmailTemplateRoles.SHIFT_CLAIMED_BY_VOLUNTEER,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[TeamShifts] Failed to queue shift claim notification for user %s, shift %s",
+                            user.pk,
+                            shift.pk,
+                        )
+
+                transaction.on_commit(_notify_claim)
             shift = Shift.objects.prefetch_related(
                 "role_assignments__role",
                 "assignments__team_member",

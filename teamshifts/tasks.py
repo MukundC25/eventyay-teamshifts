@@ -26,7 +26,7 @@ def _ensure_markdown_breaks(text: str) -> str:
     return re.sub(r"(?<!\n)(?<! {2})\n(?!\n)", "  \n", text)
 
 
-class _MarkdownBreakString(LazyI18nString):
+class MarkdownBreakString(LazyI18nString):
     def __init__(self, inner: LazyI18nString):
         super().__init__(inner.data)
 
@@ -99,7 +99,7 @@ def send_queued_email(self, event_id: int, queue_id: int):
                 return
 
             subject = LazyI18nString(queue.subject)
-            message = _MarkdownBreakString(LazyI18nString(queue.message))
+            message = MarkdownBreakString(LazyI18nString(queue.message))
             locale = queue.locale or event.settings.locale
 
             partial_send = False
@@ -120,7 +120,6 @@ def send_queued_email(self, event_id: int, queue_id: int):
                         ctx_kwargs["role"] = queue.role_filter
                     if queue.shift_id:
                         ctx_kwargs["shift"] = queue.shift
-                    if queue.shift_role_id:
                         ctx_kwargs["role"] = queue.shift_role
                     context = get_email_context(**ctx_kwargs)
                     mail(
