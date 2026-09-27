@@ -217,6 +217,50 @@ class TestStampShiftStart:
         assignment.refresh_from_db()
         assert assignment.started_at == original_dt
 
+    @pytest.mark.django_db
+    def test_stamps_next_upcoming_shift_within_grace_window(self, event, volunteer, application, role):
+        checkin_dt = now()
+        upcoming_shift = Shift.objects.create(
+            event=event,
+            name="Starting soon",
+            start_time=checkin_dt + timedelta(minutes=10),
+            end_time=checkin_dt + timedelta(hours=1),
+        )
+        ShiftRoleAssignment.objects.create(shift=upcoming_shift, role=role, capacity=5)
+        upcoming_assignment = ShiftAssignment.objects.create(
+            shift=upcoming_shift,
+            team_member=volunteer,
+            role=role,
+        )
+
+        updated = stamp_shift_start(volunteer, event, checkin_dt)
+
+        assert updated == 1
+        upcoming_assignment.refresh_from_db()
+        assert upcoming_assignment.started_at == checkin_dt
+
+    @pytest.mark.django_db
+    def test_does_not_stamp_shift_beyond_grace_window(self, event, volunteer, application, role):
+        checkin_dt = now()
+        far_shift = Shift.objects.create(
+            event=event,
+            name="Much later",
+            start_time=checkin_dt + timedelta(minutes=45),
+            end_time=checkin_dt + timedelta(hours=2),
+        )
+        ShiftRoleAssignment.objects.create(shift=far_shift, role=role, capacity=5)
+        far_assignment = ShiftAssignment.objects.create(
+            shift=far_shift,
+            team_member=volunteer,
+            role=role,
+        )
+
+        updated = stamp_shift_start(volunteer, event, checkin_dt)
+
+        assert updated == 0
+        far_assignment.refresh_from_db()
+        assert far_assignment.started_at is None
+
 
 class TestHandleVolunteerCheckin:
     @pytest.mark.django_db
@@ -251,6 +295,19 @@ class TestHandleVolunteerCheckin:
     def test_no_match_does_nothing(self, mock_cert, event):
         checkin = _make_checkin(event, attendee_email="nobody@example.com")
         handle_volunteer_checkin(checkin)
+        mock_cert.assert_not_called()
+
+    @pytest.mark.django_db
+    @patch("teamshifts.services.checkin.maybe_auto_issue_certificate")
+    def test_repeat_scan_with_no_state_change_skips_certificate(self, mock_cert, event, volunteer, application, assignment):
+        application.arrived = True
+        application.save(update_fields=["arrived"])
+        assignment.started_at = now() - timedelta(minutes=5)
+        assignment.save(update_fields=["started_at"])
+
+        checkin = _make_checkin(event, attendee_email=volunteer.email, checkin_dt=now())
+        handle_volunteer_checkin(checkin)
+
         mock_cert.assert_not_called()
 
 
