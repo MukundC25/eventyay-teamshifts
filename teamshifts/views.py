@@ -3004,13 +3004,18 @@ class ShiftCheckOutView(PublicShiftScheduleMixin, View):
             if assignment is None:
                 return JsonResponse({"status": "error", "error": str(_("Shift assignment not found."))}, status=404)
 
+            current_time = now()
+
             if not assignment.started_at:
                 return JsonResponse({"status": "error", "error": str(_("You have not checked in for this shift yet."))}, status=400)
+
+            if assignment.shift.start_time > current_time:
+                return JsonResponse({"status": "error", "error": str(_("This shift has not started yet."))}, status=400)
 
             if assignment.ended_at:
                 return JsonResponse({"status": "error", "error": str(_("You have already checked out of this shift."))}, status=400)
 
-            end_shift(assignment, now())
+            end_shift(assignment, current_time)
 
         return JsonResponse({"status": "ok", "ended_at": assignment.ended_at.isoformat()})
 
