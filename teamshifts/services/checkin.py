@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django_scopes import scope, scopes_disabled
 
@@ -6,6 +7,8 @@ from ..models import ApplicationStatus, MemberVoucher, ShiftAssignment, TeamMemb
 from .certificates import maybe_auto_issue_certificate
 
 logger = logging.getLogger(__name__)
+
+EARLY_CHECKIN_GRACE_MINUTES = 30
 
 
 def resolve_volunteer_application(checkin):
@@ -42,15 +45,37 @@ def resolve_volunteer_application(checkin):
 
 
 def stamp_shift_start(user, event, checkin_dt):
-    """Set started_at on shift assignments active at check-in time."""
+    """Set started_at on shift assignments active at check-in time, or on the
+    next upcoming shift when checked in slightly early. Returns the number of
+    assignments stamped.
+    """
     with scope(event=event):
-        ShiftAssignment.objects.filter(
+        updated = ShiftAssignment.objects.filter(
             team_member=user,
             shift__event=event,
             started_at__isnull=True,
             shift__start_time__lte=checkin_dt,
             shift__end_time__gt=checkin_dt,
         ).update(started_at=checkin_dt)
+        if updated:
+            return updated
+
+        grace_cutoff = checkin_dt + timedelta(minutes=EARLY_CHECKIN_GRACE_MINUTES)
+        upcoming = (
+            ShiftAssignment.objects.filter(
+                team_member=user,
+                shift__event=event,
+                started_at__isnull=True,
+                shift__start_time__gt=checkin_dt,
+                shift__start_time__lte=grace_cutoff,
+            )
+            .order_by("shift__start_time")
+            .first()
+        )
+        if upcoming is None:
+            return 0
+
+        return ShiftAssignment.objects.filter(pk=upcoming.pk, started_at__isnull=True).update(started_at=checkin_dt)
 
 
 def handle_volunteer_checkin(checkin):
@@ -61,12 +86,15 @@ def handle_volunteer_checkin(checkin):
 
     event = application.event
 
-    if not application.arrived:
+    just_arrived = not application.arrived
+    if just_arrived:
         application.arrived = True
         application.save(update_fields=["arrived", "updated_at"])
 
-    stamp_shift_start(application.user, event, checkin.datetime)
-    maybe_auto_issue_certificate(application)
+    stamped = stamp_shift_start(application.user, event, checkin.datetime) > 0
+
+    if just_arrived or stamped:
+        maybe_auto_issue_certificate(application)
 
     logger.info(
         "[TeamShifts] Volunteer %s marked arrived via ticket check-in for event %s",
