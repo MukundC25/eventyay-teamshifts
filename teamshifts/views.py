@@ -73,7 +73,7 @@ from .models import (
 )
 from .permissions import TeamShiftsPermissionRequiredMixin, can_act_on_role, can_view_email_addresses, get_allowed_role_ids, has_teamshifts_permission
 from .services.certificates import maybe_auto_issue_certificate
-from .services.checkin import end_shift
+from .services.checkin import evaluate_shift_certificate, stamp_shift_end
 from .services.email import get_recipients, queue_email, queue_lifecycle_email, queue_shift_notification_email
 from .services.members import AlreadyMemberError, add_member_from_organizer
 from .tasks import send_queued_email
@@ -3015,7 +3015,9 @@ class ShiftCheckOutView(PublicShiftScheduleMixin, View):
             if assignment.ended_at:
                 return JsonResponse({"status": "error", "error": str(_("You have already checked out of this shift."))}, status=400)
 
-            end_shift(assignment, current_time)
+            stamp_shift_end(assignment, current_time)
+
+        evaluate_shift_certificate(assignment)
 
         return JsonResponse({"status": "ok", "ended_at": assignment.ended_at.isoformat()})
 
