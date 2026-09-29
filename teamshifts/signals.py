@@ -20,6 +20,7 @@ from eventyay.presale.signals import header_nav_tabs
 
 from .models import ApplicationStatus, CallForTeamMembers, ShiftAssignment, TeamMemberApplication, TeamRole, TeamShiftsEmailQueue
 from .permissions import has_any_teamshifts_permission
+from .services.checkin import handle_volunteer_checkin
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
@@ -258,10 +259,11 @@ def handle_checkin_created(sender, checkin, **kwargs):
     if checkin.type != Checkin.TYPE_ENTRY:
         return
     try:
-        from .services.checkin import handle_volunteer_checkin
-
         handle_volunteer_checkin(checkin)
     except Exception:
+        # Broad on purpose: this receiver hooks into eventyay's live ticket-scan
+        # request. An unhandled error here must never break check-in for a real
+        # attendee at the door, so we log and swallow rather than propagate.
         logger.exception("[TeamShifts] Error handling check-in %s", checkin.pk)
 
 

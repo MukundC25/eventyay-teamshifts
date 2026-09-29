@@ -122,10 +122,11 @@ class TestResolveVolunteerApplication:
         assert result == application
 
     @pytest.mark.django_db
-    def test_resolve_via_order_email(self, event, volunteer, application):
+    def test_resolve_ignores_order_email_for_other_attendee(self, event, volunteer, application):
+        """Order email (the buyer) must not resolve a scan for someone else's position on the same order."""
         checkin = _make_checkin(event, order_email=volunteer.email)
         result = resolve_volunteer_application(checkin)
-        assert result == application
+        assert result is None
 
     @pytest.mark.django_db
     def test_resolve_via_voucher(self, event, volunteer, application):

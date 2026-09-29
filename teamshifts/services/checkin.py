@@ -29,7 +29,7 @@ def resolve_volunteer_application(checkin):
                 if app.event_id == event.pk and app.status == ApplicationStatus.ACCEPTED:
                     return app
 
-    email = position.attendee_email or position.order.email
+    email = position.attendee_email
     if email:
         with scope(event=event):
             try:
@@ -95,19 +95,19 @@ def handle_volunteer_checkin(checkin):
 
     if just_arrived or stamped:
         maybe_auto_issue_certificate(application)
+        logger.info(
+            "[TeamShifts] Volunteer %s marked arrived via ticket check-in for event %s",
+            application.user.email,
+            event.slug,
+        )
 
-    logger.info(
-        "[TeamShifts] Volunteer %s marked arrived via ticket check-in for event %s",
-        application.user.email,
-        event.slug,
-    )
 
-
-def end_shift(assignment, end_dt):
-    """Mark a shift assignment as completed and trigger certificate evaluation."""
+def stamp_shift_end(assignment, end_dt):
     assignment.ended_at = end_dt
     assignment.save(update_fields=["ended_at"])
 
+
+def evaluate_shift_certificate(assignment):
     with scope(event=assignment.shift.event):
         try:
             application = TeamMemberApplication.objects.get(
@@ -119,3 +119,8 @@ def end_shift(assignment, end_dt):
             return
 
     maybe_auto_issue_certificate(application)
+
+
+def end_shift(assignment, end_dt):
+    stamp_shift_end(assignment, end_dt)
+    evaluate_shift_certificate(assignment)
