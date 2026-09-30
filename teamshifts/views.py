@@ -2776,12 +2776,13 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                     )
                     if conflicting:
                         return fail(_("You are already assigned to another shift during this time."))
+                previous_role_id = existing.role_id if existing else None
                 _assignment, created = ShiftAssignment.objects.update_or_create(
                     shift=shift,
                     team_member=request.user,
                     defaults={"role_id": sra.role_id, "assigned_by": None},
                 )
-            if created:
+            if created or previous_role_id != sra.role_id:
 
                 def _notify_claim(event=event, user=request.user, shift=shift, role=sra.role):
                     try:

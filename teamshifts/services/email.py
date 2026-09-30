@@ -2,6 +2,7 @@ import logging
 from collections.abc import Iterable
 
 from django.db import transaction
+from django.utils.timezone import now
 from django_scopes import scope
 from eventyay.base.models import Event, User
 
@@ -83,7 +84,15 @@ def queue_email(
 def _dispatch(event_id: int, queue_id: int, eta=None) -> None:
     if eta is not None:
         return
-    transaction.on_commit(lambda: send_queued_email.delay(event_id, queue_id))
+
+    def _send():
+        try:
+            send_queued_email.delay(event_id, queue_id)
+        except Exception:
+            logger.exception("[TeamShifts] Failed to dispatch queue %s to Celery; falling back to scheduled retry", queue_id)
+            TeamShiftsEmailQueue.objects.filter(pk=queue_id, sent_at__isnull=True, send_after__isnull=True).update(send_after=now())
+
+    transaction.on_commit(_send)
 
 
 def queue_lifecycle_email(application, role: str) -> TeamShiftsEmailQueue | None:

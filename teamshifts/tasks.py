@@ -143,6 +143,12 @@ def send_queued_email(self, event_id: int, queue_id: int):
                     recipient.save(update_fields=["error", "sent_at"])
                     logger.exception("[TeamShifts] Send failed for %s", recipient.email)
                     partial_send = True
+                except Exception as exc:
+                    recipient.sent_at = None
+                    recipient.error = str(exc)
+                    recipient.save(update_fields=["error", "sent_at"])
+                    logger.exception("[TeamShifts] Unexpected failure rendering/sending to %s", recipient.email)
+                    partial_send = True
 
             has_unsent = queue.recipients.filter(sent_at__isnull=True).exists()
             if not has_unsent:
