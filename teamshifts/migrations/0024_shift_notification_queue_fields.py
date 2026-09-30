@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0022_membercertificate_notified_at"),
+        ("teamshifts", "0023_shiftlocation_linked_room"),
     ]
 
     operations = [

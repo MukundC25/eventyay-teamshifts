@@ -90,7 +90,8 @@ def _dispatch(event_id: int, queue_id: int, eta=None) -> None:
             send_queued_email.delay(event_id, queue_id)
         except Exception:
             logger.exception("[TeamShifts] Failed to dispatch queue %s to Celery; falling back to scheduled retry", queue_id)
-            TeamShiftsEmailQueue.objects.filter(pk=queue_id, sent_at__isnull=True, send_after__isnull=True).update(send_after=now())
+            with scope(event=event_id):
+                TeamShiftsEmailQueue.objects.filter(pk=queue_id, sent_at__isnull=True, send_after__isnull=True).update(send_after=now())
 
     transaction.on_commit(_send)
 
