@@ -545,6 +545,7 @@ class EmailTemplateEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                 "form": form,
                 "template": template,
                 "role_label": EmailTemplateRoles(template.role).label,
+                "email_placeholders": _TEMPLATE_PLACEHOLDERS,
             },
         )
 
@@ -567,6 +568,7 @@ class EmailTemplateEditView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin
                 "form": form,
                 "template": template,
                 "role_label": EmailTemplateRoles(template.role).label,
+                "email_placeholders": _TEMPLATE_PLACEHOLDERS,
             },
         )
 
@@ -2247,6 +2249,24 @@ class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequire
             return JsonResponse({"members": members})
 
 
+def _notify_shift_change_safely(event, user, shift, role, template_role):
+    try:
+        queue_shift_notification_email(
+            event=event,
+            user=user,
+            shift=shift,
+            role=role,
+            template_role=template_role,
+        )
+    except Exception:
+        logger.exception(
+            "[TeamShifts] Failed to queue %s notification for user %s, shift %s",
+            template_role,
+            user.pk,
+            shift.pk,
+        )
+
+
 class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
     permission = "can_teamshifts_create_shifts"
 
@@ -2349,24 +2369,11 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
             if created or previous_role_id != role_id:
                 shift_role_assignment = shift.role_assignments.select_related("role").filter(role_id=role_id).first() if role_id else None
                 role = shift_role_assignment.role if shift_role_assignment else None
-
-                def _notify_assignment(event=event, user=user, shift=shift, role=role):
-                    try:
-                        queue_shift_notification_email(
-                            event=event,
-                            user=user,
-                            shift=shift,
-                            role=role,
-                            template_role=EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "[TeamShifts] Failed to queue shift assignment notification for user %s, shift %s",
-                            user.pk,
-                            shift.pk,
-                        )
-
-                transaction.on_commit(_notify_assignment)
+                transaction.on_commit(
+                    lambda event=event, user=user, shift=shift, role=role: _notify_shift_change_safely(
+                        event, user, shift, role, EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER
+                    )
+                )
             return JsonResponse({"status": "ok"})
 
     def delete(self, request, *args, **kwargs):
@@ -2783,24 +2790,11 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                     defaults={"role_id": sra.role_id, "assigned_by": None},
                 )
             if created or previous_role_id != sra.role_id:
-
-                def _notify_claim(event=event, user=request.user, shift=shift, role=sra.role):
-                    try:
-                        queue_shift_notification_email(
-                            event=event,
-                            user=user,
-                            shift=shift,
-                            role=role,
-                            template_role=EmailTemplateRoles.SHIFT_CLAIMED_BY_VOLUNTEER,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "[TeamShifts] Failed to queue shift claim notification for user %s, shift %s",
-                            user.pk,
-                            shift.pk,
-                        )
-
-                transaction.on_commit(_notify_claim)
+                transaction.on_commit(
+                    lambda event=event, user=request.user, shift=shift, role=sra.role: _notify_shift_change_safely(
+                        event, user, shift, role, EmailTemplateRoles.SHIFT_CLAIMED_BY_VOLUNTEER
+                    )
+                )
             shift = Shift.objects.prefetch_related(
                 "role_assignments__role",
                 "assignments__team_member",
