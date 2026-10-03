@@ -172,6 +172,18 @@ def teamshifts_mail_placeholders(sender, **kwargs):
             lambda event: "2026-01-15 09:00 – 12:00",
         ),
         SimpleFunctionalMailTextPlaceholder(
+            "my_shifts_url",
+            ["event"],
+            lambda event: build_absolute_uri(event, "plugins:teamshifts:my_shifts"),
+            lambda event: "https://example.com/fossasia/my-event/teamshifts/my-shifts/",
+        ),
+        SimpleFunctionalMailTextPlaceholder(
+            "shift_list",
+            ["shift_list"],
+            lambda shift_list: shift_list,
+            "- Sat, Oct 10, 2026, 8 a.m.–12 p.m.: Registration desk (Role: Greeter, Location: Main hall)",
+        ),
+        SimpleFunctionalMailTextPlaceholder(
             "voucher_code",
             ["voucher_code"],
             lambda voucher_code: voucher_code,
