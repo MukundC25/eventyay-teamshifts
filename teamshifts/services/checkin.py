@@ -78,6 +78,38 @@ def stamp_shift_start(user, event, checkin_dt):
         return ShiftAssignment.objects.filter(pk=upcoming.pk, started_at__isnull=True).update(started_at=checkin_dt)
 
 
+def stamp_shift_exit(user, event, checkout_dt):
+    with scope(event=event):
+        updated = ShiftAssignment.objects.filter(
+            team_member=user,
+            shift__event=event,
+            started_at__isnull=False,
+            ended_at__isnull=True,
+            shift__start_time__lte=checkout_dt,
+            shift__end_time__gt=checkout_dt,
+        ).update(ended_at=checkout_dt)
+        if updated:
+            return updated
+
+        grace_cutoff = checkout_dt - timedelta(minutes=EARLY_CHECKIN_GRACE_MINUTES)
+        recently_ended = (
+            ShiftAssignment.objects.filter(
+                team_member=user,
+                shift__event=event,
+                started_at__isnull=False,
+                ended_at__isnull=True,
+                shift__end_time__lte=checkout_dt,
+                shift__end_time__gt=grace_cutoff,
+            )
+            .order_by("-shift__end_time")
+            .first()
+        )
+        if recently_ended is None:
+            return 0
+
+        return ShiftAssignment.objects.filter(pk=recently_ended.pk, ended_at__isnull=True).update(ended_at=checkout_dt)
+
+
 def handle_volunteer_checkin(checkin):
     """Wire an eventyay Checkin to teamshifts arrival tracking."""
     application = resolve_volunteer_application(checkin)
@@ -97,6 +129,24 @@ def handle_volunteer_checkin(checkin):
         maybe_auto_issue_certificate(application)
         logger.info(
             "[TeamShifts] Volunteer %s marked arrived via ticket check-in for event %s",
+            application.user.email,
+            event.slug,
+        )
+
+
+def handle_volunteer_checkout(checkin):
+    """Wire an eventyay exit scan to teamshifts shift completion tracking."""
+    application = resolve_volunteer_application(checkin)
+    if application is None:
+        return
+
+    event = application.event
+    closed = stamp_shift_exit(application.user, event, checkin.datetime) > 0
+
+    if closed:
+        maybe_auto_issue_certificate(application)
+        logger.info(
+            "[TeamShifts] Volunteer %s shift closed via ticket check-out for event %s",
             application.user.email,
             event.slug,
         )

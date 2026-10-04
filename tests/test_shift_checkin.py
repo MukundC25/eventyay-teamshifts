@@ -21,7 +21,9 @@ from teamshifts.models import (
 from teamshifts.services.checkin import (
     end_shift,
     handle_volunteer_checkin,
+    handle_volunteer_checkout,
     resolve_volunteer_application,
+    stamp_shift_exit,
     stamp_shift_start,
 )
 
@@ -98,7 +100,7 @@ def cfm(event):
     )
 
 
-def _make_checkin(event, voucher_id=None, attendee_email=None, order_email=None, checkin_dt=None):
+def _make_checkin(event, voucher_id=None, attendee_email=None, order_email=None, checkin_dt=None, checkin_type="entry"):
     order = SimpleNamespace(email=order_email or "")
     position = SimpleNamespace(
         voucher_id=voucher_id,
@@ -110,7 +112,7 @@ def _make_checkin(event, voucher_id=None, attendee_email=None, order_email=None,
         position=position,
         list=checkin_list,
         datetime=checkin_dt or now(),
-        type="entry",
+        type=checkin_type,
     )
 
 
@@ -261,6 +263,115 @@ class TestStampShiftStart:
         assert updated == 0
         far_assignment.refresh_from_db()
         assert far_assignment.started_at is None
+
+
+class TestStampShiftExit:
+    @pytest.mark.django_db
+    def test_closes_active_shift(self, event, volunteer, application, assignment):
+        assignment.started_at = now() - timedelta(minutes=10)
+        assignment.save(update_fields=["started_at"])
+
+        checkout_dt = now()
+        updated = stamp_shift_exit(volunteer, event, checkout_dt)
+
+        assert updated == 1
+        assignment.refresh_from_db()
+        assert assignment.ended_at == checkout_dt
+
+    @pytest.mark.django_db
+    def test_does_not_close_shift_that_never_started(self, event, volunteer, application, assignment):
+        updated = stamp_shift_exit(volunteer, event, now())
+
+        assert updated == 0
+        assignment.refresh_from_db()
+        assert assignment.ended_at is None
+
+    @pytest.mark.django_db
+    def test_does_not_overwrite_existing_end(self, event, volunteer, application, assignment):
+        assignment.started_at = now() - timedelta(hours=1)
+        original_end = now() - timedelta(minutes=30)
+        assignment.ended_at = original_end
+        assignment.save(update_fields=["started_at", "ended_at"])
+
+        stamp_shift_exit(volunteer, event, now())
+        assignment.refresh_from_db()
+        assert assignment.ended_at == original_end
+
+    @pytest.mark.django_db
+    def test_closes_recently_ended_shift_within_grace_window(self, event, volunteer, application, role):
+        checkout_dt = now()
+        just_ended_shift = Shift.objects.create(
+            event=event,
+            name="Just wrapped up",
+            start_time=checkout_dt - timedelta(hours=1),
+            end_time=checkout_dt - timedelta(minutes=10),
+        )
+        ShiftRoleAssignment.objects.create(shift=just_ended_shift, role=role, capacity=5)
+        open_assignment = ShiftAssignment.objects.create(
+            shift=just_ended_shift,
+            team_member=volunteer,
+            role=role,
+            started_at=checkout_dt - timedelta(hours=1),
+        )
+
+        updated = stamp_shift_exit(volunteer, event, checkout_dt)
+
+        assert updated == 1
+        open_assignment.refresh_from_db()
+        assert open_assignment.ended_at == checkout_dt
+
+    @pytest.mark.django_db
+    def test_does_not_close_shift_beyond_grace_window(self, event, volunteer, application, role):
+        checkout_dt = now()
+        long_ended_shift = Shift.objects.create(
+            event=event,
+            name="Ended a while ago",
+            start_time=checkout_dt - timedelta(hours=2),
+            end_time=checkout_dt - timedelta(minutes=45),
+        )
+        ShiftRoleAssignment.objects.create(shift=long_ended_shift, role=role, capacity=5)
+        open_assignment = ShiftAssignment.objects.create(
+            shift=long_ended_shift,
+            team_member=volunteer,
+            role=role,
+            started_at=checkout_dt - timedelta(hours=2),
+        )
+
+        updated = stamp_shift_exit(volunteer, event, checkout_dt)
+
+        assert updated == 0
+        open_assignment.refresh_from_db()
+        assert open_assignment.ended_at is None
+
+
+class TestHandleVolunteerCheckout:
+    @pytest.mark.django_db
+    @patch("teamshifts.services.checkin.maybe_auto_issue_certificate")
+    def test_closes_shift_and_issues_certificate(self, mock_cert, event, volunteer, application, assignment):
+        assignment.started_at = now() - timedelta(minutes=10)
+        assignment.save(update_fields=["started_at"])
+
+        checkin = _make_checkin(event, attendee_email=volunteer.email, checkin_dt=now(), checkin_type="exit")
+        handle_volunteer_checkout(checkin)
+
+        assignment.refresh_from_db()
+        assert assignment.ended_at is not None
+        mock_cert.assert_called_once_with(application)
+
+    @pytest.mark.django_db
+    @patch("teamshifts.services.checkin.maybe_auto_issue_certificate")
+    def test_no_open_shift_skips_certificate(self, mock_cert, event, volunteer, application):
+        checkin = _make_checkin(event, attendee_email=volunteer.email, checkin_dt=now(), checkin_type="exit")
+        handle_volunteer_checkout(checkin)
+
+        mock_cert.assert_not_called()
+
+    @pytest.mark.django_db
+    @patch("teamshifts.services.checkin.maybe_auto_issue_certificate")
+    def test_no_match_does_nothing(self, mock_cert, event):
+        checkin = _make_checkin(event, attendee_email="nobody@example.com", checkin_type="exit")
+        handle_volunteer_checkout(checkin)
+        mock_cert.assert_not_called()
 
 
 class TestHandleVolunteerCheckin:
