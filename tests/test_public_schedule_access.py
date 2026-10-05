@@ -1,10 +1,21 @@
+from unittest.mock import patch
+
 import pytest
 from django.urls import reverse
 from django.utils.timezone import now, timedelta
 from django_scopes import scopes_disabled
 from eventyay.base.models import Event, Organizer, Team, User
 
-from teamshifts.models import CallForTeamMembers, Shift, ShiftLocation, ShiftRoleAssignment, TeamRole
+from teamshifts.models import (
+    ApplicationStatus,
+    CallForTeamMembers,
+    EmailTemplateRoles,
+    Shift,
+    ShiftLocation,
+    ShiftRoleAssignment,
+    TeamMemberApplication,
+    TeamRole,
+)
 
 
 @pytest.fixture
@@ -53,6 +64,18 @@ def test_teamshifts_managers_can_view_schedule_without_applying(client, event, s
 
 
 @pytest.mark.django_db
+def test_unpublished_schedule_shows_notice_to_managers(client, event, shift):
+    with scopes_disabled():
+        CallForTeamMembers.objects.filter(event=event).update(shift_schedule_published=False)
+    _login_with_team(client, event, teamshifts_role="coordinator")
+
+    response = client.get(_url("public_shift_schedule", event))
+    assert response.status_code == 200
+    assert response.context["shift_schedule_published"] is False
+    assert b"Morning Shift" not in response.content
+
+
+@pytest.mark.django_db
 def test_user_without_teamshifts_access_is_redirected_to_apply(client, event, shift):
     _login_with_team(client, event, can_view_orders=True)
 
@@ -71,7 +94,35 @@ def test_managers_can_claim_and_withdraw_shifts_without_applying(client, event, 
 
     claim = client.post(_url("public_shift_claim", event, pk=shift.pk), {"role_id": role.pk}, **headers)
     assert claim.status_code == 200
+    with scopes_disabled():
+        application = TeamMemberApplication.objects.get(event=event, user__email="user@example.com")
+    assert application.status == ApplicationStatus.ACCEPTED
     assert client.get(_url("my_shifts", event)).status_code == 200
 
     withdraw = client.post(_url("public_shift_withdraw", event, pk=shift.pk), {"role_id": role.pk}, **headers)
     assert withdraw.status_code == 200
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("previous_status", "emails"),
+    [(None, 0), (ApplicationStatus.PENDING, 1), (ApplicationStatus.REJECTED, 1)],
+)
+@patch("teamshifts.views.queue_lifecycle_email")
+def test_manager_claim_emails_only_when_existing_application_is_accepted(
+    mock_queue, django_capture_on_commit_callbacks, client, event, shift, previous_status, emails
+):
+    _login_with_team(client, event, teamshifts_role="lead")
+    with scopes_disabled():
+        role = TeamRole.objects.create(event=event, name="Registration")
+        ShiftRoleAssignment.objects.create(shift=shift, role=role, capacity=2)
+        if previous_status:
+            TeamMemberApplication.objects.create(event=event, user=User.objects.get(email="user@example.com"), status=previous_status)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(_url("public_shift_claim", event, pk=shift.pk), {"role_id": role.pk}, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+
+    assert response.status_code == 200
+    assert mock_queue.call_count == emails
+    if emails:
+        assert mock_queue.call_args.args[1] == EmailTemplateRoles.APPLICATION_ACCEPTED

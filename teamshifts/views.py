@@ -81,7 +81,7 @@ from .permissions import (
 )
 from .services.certificates import maybe_auto_issue_certificate
 from .services.email import get_recipients, queue_email, queue_lifecycle_email, queue_shift_notification_email
-from .services.members import AlreadyMemberError, add_member_from_organizer
+from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
@@ -2617,6 +2617,11 @@ class PublicShiftScheduleMixin:
     redirect_unpublished_to_schedule = True
     allow_teamshifts_managers = False
 
+    def _can_access_schedule(self, request):
+        if self.member_application is not None:
+            return True
+        return self.allow_teamshifts_managers and has_any_teamshifts_permission(request.user, self.organizer, self.event, request=request)
+
     def dispatch(self, request, *args, **kwargs):
         if "teamshifts" not in request.event.get_plugins():
             raise Http404
@@ -2629,9 +2634,7 @@ class PublicShiftScheduleMixin:
         self.event = request.event
         self.organizer = request.organizer
         self.member_application = _get_accepted_application(request, self.event)
-        if self.member_application is None and not (
-            self.allow_teamshifts_managers and has_any_teamshifts_permission(request.user, self.organizer, self.event, request=request)
-        ):
+        if not self._can_access_schedule(request):
             if _wants_json(request):
                 return JsonResponse(
                     {"status": "error", "error": str(_("You need to be an accepted team member to view the shift schedule."))},
@@ -2804,6 +2807,10 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                     if conflicting:
                         return fail(_("You are already assigned to another shift during this time."))
                 previous_role_id = existing.role_id if existing else None
+                if self.member_application is None:
+                    application, promoted = accept_manager_as_member(event=event, user=request.user)
+                    if promoted:
+                        transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
                 _assignment, created = ShiftAssignment.objects.update_or_create(
                     shift=shift,
                     team_member=request.user,
