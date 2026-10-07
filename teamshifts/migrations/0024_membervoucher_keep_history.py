@@ -40,4 +40,14 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunPython(backfill_event, migrations.RunPython.noop),
+        migrations.RunSQL("SET CONSTRAINTS ALL IMMEDIATE", migrations.RunSQL.noop),
+        migrations.AlterField(
+            model_name="membervoucher",
+            name="event",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="teamshifts_member_vouchers",
+                to="base.event",
+            ),
+        ),
     ]
