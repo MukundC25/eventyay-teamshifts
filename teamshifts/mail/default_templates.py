@@ -1,7 +1,7 @@
 from django.utils.translation import gettext_noop as _
 from i18nfield.strings import LazyI18nString
 
-RECEIVED_SUBJECT = LazyI18nString.from_gettext(_("We received your application"))
+RECEIVED_SUBJECT = LazyI18nString.from_gettext(_("We received your application — {event_name}"))
 RECEIVED_TEXT = LazyI18nString.from_gettext(
     _(
         "Hi {full_name},\n\n"
@@ -12,7 +12,7 @@ RECEIVED_TEXT = LazyI18nString.from_gettext(
     )
 )
 
-ACCEPTED_SUBJECT = LazyI18nString.from_gettext(_("Your application was accepted"))
+ACCEPTED_SUBJECT = LazyI18nString.from_gettext(_("Your application was accepted — {event_name}"))
 ACCEPTED_TEXT = LazyI18nString.from_gettext(
     _(
         "Hi {full_name},\n\n"
@@ -25,7 +25,7 @@ ACCEPTED_TEXT = LazyI18nString.from_gettext(
     )
 )
 
-REJECTED_SUBJECT = LazyI18nString.from_gettext(_("Update on your application"))
+REJECTED_SUBJECT = LazyI18nString.from_gettext(_("Update on your application — {event_name}"))
 REJECTED_TEXT = LazyI18nString.from_gettext(
     _(
         "Hi {full_name},\n\n"
