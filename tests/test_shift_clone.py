@@ -137,6 +137,31 @@ def test_shift_clone_from_other_event_is_404(orga_client, event, source_shift):
 
 
 @pytest.mark.django_db
+def test_shift_clone_post_with_missing_source_is_404(orga_client, event, source_shift, location, roles):
+    url = reverse(
+        "plugins:teamshifts:shift_clone",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": source_shift.pk + 999},
+    )
+    start = source_shift.start_time + timedelta(days=1)
+    data = {
+        "mode": "single",
+        "name": "Setup",
+        "location": location.pk,
+        "start_time": start.strftime("%Y-%m-%dT%H:%M"),
+        "end_time": (start + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M"),
+        "roles-TOTAL_FORMS": "1",
+        "roles-INITIAL_FORMS": "0",
+        "roles-MIN_NUM_FORMS": "0",
+        "roles-MAX_NUM_FORMS": "1000",
+        "roles-0-role": roles[0].pk,
+        "roles-0-capacity": "1",
+    }
+    assert orga_client.post(url, data).status_code == 404
+    with scope(event=event):
+        assert Shift.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_shift_clone_requires_permission(client, event, source_shift, django_user_model, settings):
     settings.SITE_URL = "https://testserver"
     outsider = django_user_model.objects.create_user(email="outsider@example.com", password="x")

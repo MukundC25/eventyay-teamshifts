@@ -1768,9 +1768,16 @@ class ShiftCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Temp
 
 
 class ShiftCloneView(ShiftCreateView):
+    def get_source_shift(self):
+        return get_object_or_404(Shift.objects.prefetch_related("role_assignments"), pk=self.kwargs.get("pk"), event=self.request.event)
+
+    def post(self, request, *args, **kwargs):
+        self.get_source_shift()
+        return super().post(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
-        source = get_object_or_404(Shift.objects.prefetch_related("role_assignments"), pk=self.kwargs.get("pk"), event=self.request.event)
         if self.request.method == "GET":
+            source = self.get_source_shift()
             role_initial = [{"role": assignment.role_id, "capacity": assignment.capacity} for assignment in source.role_assignments.all()]
             formset_class = build_shift_role_formset(extra=max(len(role_initial), 1))
             kwargs["form"] = ShiftForm(event=self.request.event, initial=model_to_dict(source, fields=ShiftForm._meta.fields))
