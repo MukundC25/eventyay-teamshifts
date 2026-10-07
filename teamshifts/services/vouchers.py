@@ -98,6 +98,10 @@ def allocate_and_send_vouchers(
             continue
 
         with scope(event=event), transaction.atomic():
+            TeamMemberApplication.objects.select_for_update().filter(pk=application.pk).first()
+            if MemberVoucher.objects.filter(application=application).exists():
+                continue
+
             voucher = _claim_next_voucher(settings)
             if voucher is None:
                 result["skipped_no_vouchers"] += 1
