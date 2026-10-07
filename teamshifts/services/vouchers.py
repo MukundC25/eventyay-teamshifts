@@ -108,6 +108,7 @@ def allocate_and_send_vouchers(
                 continue
 
             member_voucher = MemberVoucher.objects.create(
+                event=event,
                 application=application,
                 voucher=voucher,
                 status=VoucherStatus.NOT_SENT,
