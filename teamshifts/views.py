@@ -2218,6 +2218,7 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "role_assignments__role",
                 "assignments__team_member",
                 "assignments__role",
+                "assignments__assigned_by",
             ).get(pk=shift.pk)
             return JsonResponse({"status": "ok", "talk": _shift_talk_payload(shift)})
 
@@ -2350,6 +2351,7 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                 "role_assignments__role",
                 "assignments__team_member",
                 "assignments__role",
+                "assignments__assigned_by",
             ).get(pk=shift.pk)
             return JsonResponse({"status": "ok", "roles": _shift_roles_payload(shift)})
 
@@ -2389,6 +2391,7 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                 "role_assignments__role",
                 "assignments__team_member",
                 "assignments__role",
+                "assignments__assigned_by",
             ).get(pk=shift.pk)
             return JsonResponse({"status": "ok", "roles": _shift_roles_payload(shift)})
 

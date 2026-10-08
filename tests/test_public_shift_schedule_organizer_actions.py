@@ -13,6 +13,7 @@ from teamshifts.models import (
     CallForTeamMembers,
     Shift,
     ShiftAssignment,
+    ShiftLocation,
     ShiftRoleAssignment,
     TeamMemberApplication,
     TeamRole,
@@ -56,11 +57,18 @@ def team_role(event):
 
 
 @pytest.fixture
-def shift(event, team_role):
+def location(event):
+    with scope(event=event):
+        return ShiftLocation.objects.create(event=event, name="Main Hall")
+
+
+@pytest.fixture
+def shift(event, team_role, location):
     with scope(event=event):
         shift = Shift.objects.create(
             event=event,
             name="Morning Shift",
+            location=location,
             start_time=now(),
             end_time=now() + timedelta(hours=3),
         )
@@ -69,13 +77,17 @@ def shift(event, team_role):
 
 
 @pytest.mark.django_db
-def test_organizer_can_edit_shift_via_public_manage_url(orga_client, event, shift, team_role):
+def test_organizer_can_edit_shift_via_public_manage_url(orga_client, event, shift, team_role, location):
     url = reverse(
         "plugins:teamshifts:public_shift_manage",
         kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": shift.pk},
     )
     payload = {
         "title": {"en": "Updated Shift Name"},
+        "description": "",
+        "start": shift.start_time.isoformat(),
+        "end": shift.end_time.isoformat(),
+        "room": location.pk,
         "roles": [{"id": team_role.pk, "capacity": 3}],
     }
     response = orga_client.patch(url, data=json.dumps(payload), content_type="application/json")
@@ -84,11 +96,13 @@ def test_organizer_can_edit_shift_via_public_manage_url(orga_client, event, shif
     body = response.json()
     assert body["status"] == "ok"
     assert body["talk"]["title"]["en"] == "Updated Shift Name"
+    assert body["talk"]["room"] == location.pk
     assert body["talk"]["roles"][0]["capacity"] == 3
 
     with scope(event=event):
         shift.refresh_from_db()
         assert shift.name == "Updated Shift Name"
+        assert shift.location_id == location.pk
         assert shift.role_assignments.get(role=team_role).capacity == 3
 
 
@@ -134,6 +148,29 @@ def test_organizer_can_assign_and_unassign_member_via_public_assignments_url(org
 
     with scope(event=event):
         assert not ShiftAssignment.objects.filter(shift=shift, team_member=volunteer).exists()
+
+
+@pytest.mark.django_db
+def test_organizer_can_assign_themselves_via_public_assignments_url(orga_client, event, user, shift, team_role):
+    with scope(event=event):
+        TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
+    url = reverse(
+        "plugins:teamshifts:public_shift_assignments",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+    )
+
+    payload = {"shift_id": shift.pk, "user_id": user.pk, "role_id": team_role.pk}
+    response = orga_client.post(url, data=json.dumps(payload), content_type="application/json")
+
+    assert response.status_code == 200
+    assignee = next(entry for role in response.json()["roles"] for entry in role["assigned"] if entry["id"] == user.pk)
+    assert assignee["self_assigned"] is False
+    assert assignee["assigned_by_name"]
+
+    with scope(event=event):
+        assignment = ShiftAssignment.objects.get(shift=shift, team_member=user)
+        assert assignment.role_id == team_role.pk
+        assert assignment.assigned_by_id == user.pk
 
 
 @pytest.mark.django_db
