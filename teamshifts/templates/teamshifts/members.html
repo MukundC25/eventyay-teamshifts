@@ -126,7 +126,7 @@
               <td>{{ member.shifts_assigned }}</td>
               <td>
                 {% if member.shifts_assigned %}
-                  <span class="label {% if member.shifts_completed == member.shifts_assigned %}label-success{% elif member.shifts_checked_in %}label-primary{% else %}label-default{% endif %}">
+                  <span class="label {% if member.shifts_checked_in == member.shifts_assigned %}label-success{% elif member.shifts_checked_in %}label-primary{% else %}label-default{% endif %}">
                     {{ member.shifts_checked_in }}/{{ member.shifts_assigned }}
                   </span>
                 {% else %}
