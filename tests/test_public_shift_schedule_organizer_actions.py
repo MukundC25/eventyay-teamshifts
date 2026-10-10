@@ -2,7 +2,7 @@ import json
 from datetime import timedelta
 
 import pytest
-from django.test import Client
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
@@ -17,6 +17,8 @@ from teamshifts.models import (
     ShiftRoleAssignment,
     TeamMemberApplication,
     TeamRole,
+    TeamShiftsEmailQueue,
+    TeamShiftsEmailQueueRecipient,
 )
 
 
@@ -178,6 +180,26 @@ def test_organizer_can_assign_and_unassign_member_via_public_assignments_url(org
 
     with scope(event=event):
         assert not ShiftAssignment.objects.filter(shift=shift, team_member=volunteer).exists()
+
+
+@pytest.mark.django_db
+def test_assigning_via_public_url_queues_the_organizer_assignment_email(orga_client, event, shift, team_role, volunteer, member_client):
+    with scope(event=event):
+        CallForTeamMembers.objects.create(event=event, active=True, shift_schedule_published=True)
+    url = reverse(
+        "plugins:teamshifts:public_shift_assignments",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+    )
+
+    payload = {"shift_id": shift.pk, "user_id": volunteer.pk, "role_id": team_role.pk}
+    with TestCase().captureOnCommitCallbacks(execute=True):
+        response = orga_client.post(url, data=json.dumps(payload), content_type="application/json")
+
+    assert response.status_code == 200
+    with scope(event=event):
+        queued = TeamShiftsEmailQueue.objects.get(event=event, shift=shift)
+        assert queued.shift_role_id == team_role.pk
+        assert list(TeamShiftsEmailQueueRecipient.objects.filter(queue=queued).values_list("user_id", flat=True)) == [volunteer.pk]
 
 
 @pytest.mark.django_db
