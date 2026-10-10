@@ -2283,6 +2283,17 @@ class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequire
             return JsonResponse({"members": members})
 
 
+def _queue_lifecycle_email_safely(application, template_role):
+    try:
+        queue_lifecycle_email(application, template_role)
+    except Exception:
+        logger.exception(
+            "[TeamShifts] Failed to queue %s email for application %s",
+            template_role,
+            application.pk,
+        )
+
+
 def _notify_shift_change_safely(event, user, shift, role, template_role):
     try:
         queue_shift_notification_email(
@@ -2837,7 +2848,7 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                 if self.member_application is None:
                     application, promoted = accept_manager_as_member(event=event, user=request.user)
                     if promoted:
-                        transaction.on_commit(lambda app=application: queue_lifecycle_email(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
+                        transaction.on_commit(lambda app=application: _queue_lifecycle_email_safely(app, EmailTemplateRoles.APPLICATION_ACCEPTED))
                 _assignment, created = ShiftAssignment.objects.update_or_create(
                     shift=shift,
                     team_member=request.user,

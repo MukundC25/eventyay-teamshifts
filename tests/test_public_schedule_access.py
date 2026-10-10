@@ -11,6 +11,7 @@ from teamshifts.models import (
     CallForTeamMembers,
     EmailTemplateRoles,
     Shift,
+    ShiftAssignment,
     ShiftLocation,
     ShiftRoleAssignment,
     TeamMemberApplication,
@@ -126,3 +127,21 @@ def test_manager_claim_emails_only_when_existing_application_is_accepted(
     assert mock_queue.call_count == emails
     if emails:
         assert mock_queue.call_args.args[1] == EmailTemplateRoles.APPLICATION_ACCEPTED
+
+
+@pytest.mark.django_db
+@patch("teamshifts.views.queue_lifecycle_email", side_effect=RuntimeError("mail template missing"))
+def test_manager_claim_succeeds_when_acceptance_email_fails(mock_queue, django_capture_on_commit_callbacks, client, event, shift):
+    _login_with_team(client, event, teamshifts_role="lead")
+    with scopes_disabled():
+        role = TeamRole.objects.create(event=event, name="Registration")
+        ShiftRoleAssignment.objects.create(shift=shift, role=role, capacity=2)
+        TeamMemberApplication.objects.create(event=event, user=User.objects.get(email="user@example.com"), status=ApplicationStatus.PENDING)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(_url("public_shift_claim", event, pk=shift.pk), {"role_id": role.pk}, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+
+    assert response.status_code == 200
+    mock_queue.assert_called_once()
+    with scopes_disabled():
+        assert ShiftAssignment.objects.filter(shift=shift, team_member__email="user@example.com").exists()
