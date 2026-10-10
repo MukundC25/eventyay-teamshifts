@@ -1785,7 +1785,8 @@ class ShiftCloneView(ShiftCreateView):
         return get_object_or_404(Shift.objects.prefetch_related("role_assignments"), pk=self.kwargs.get("pk"), event=self.request.event)
 
     def post(self, request, *args, **kwargs):
-        self.get_source_shift()
+        if not Shift.objects.filter(pk=self.kwargs.get("pk"), event=request.event).exists():
+            raise Http404
         return super().post(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):

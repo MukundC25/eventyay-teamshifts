@@ -166,7 +166,7 @@ def test_shift_clone_requires_permission(client, event, source_shift, django_use
     settings.SITE_URL = "https://testserver"
     outsider = django_user_model.objects.create_user(email="outsider@example.com", password="x")
     client.force_login(outsider)
-    assert client.get(clone_url(event, source_shift)).status_code in (302, 403, 404)
+    assert client.get(clone_url(event, source_shift)).status_code == 404
     with scope(event=event):
         assert Shift.objects.count() == 1
 
