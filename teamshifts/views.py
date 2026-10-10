@@ -2362,49 +2362,50 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                     status=400,
                 )
 
-            # Capacity check: ensure assignment won't exceed role capacity
-            if role_id_provided:
-                role_assignment = shift.role_assignments.filter(role_id=role_id).first()
-                if role_assignment:
-                    current_count = ShiftAssignment.objects.filter(shift=shift, role_id=role_id).exclude(team_member=user).count()
-                    if current_count >= role_assignment.capacity:
+            with transaction.atomic():
+                Shift.objects.select_for_update().get(pk=shift.pk, event=event)
+                if role_id_provided:
+                    role_assignment = shift.role_assignments.select_for_update().filter(role_id=role_id).first()
+                    if role_assignment:
+                        current_count = ShiftAssignment.objects.filter(shift=shift, role_id=role_id).exclude(team_member=user).count()
+                        if current_count >= role_assignment.capacity:
+                            return JsonResponse(
+                                {"detail": "Role capacity has been reached for this shift."},
+                                status=400,
+                            )
+
+                if shift.start_time and shift.end_time:
+                    conflicting = (
+                        ShiftAssignment.objects.filter(
+                            team_member=user,
+                            shift__event=event,
+                            shift__start_time__lt=shift.end_time,
+                            shift__end_time__gt=shift.start_time,
+                        )
+                        .exclude(shift=shift)
+                        .select_related("shift")
+                        .first()
+                    )
+                    if conflicting:
                         return JsonResponse(
-                            {"detail": "Role capacity has been reached for this shift."},
+                            {"detail": "Member is already assigned to another shift during this time."},
                             status=400,
                         )
 
-            if shift.start_time and shift.end_time:
-                conflicting = (
-                    ShiftAssignment.objects.filter(
-                        team_member=user,
-                        shift__event=event,
-                        shift__start_time__lt=shift.end_time,
-                        shift__end_time__gt=shift.start_time,
-                    )
-                    .exclude(shift=shift)
-                    .select_related("shift")
-                    .first()
+                previous_role_id = ShiftAssignment.objects.filter(shift=shift, team_member=user).values_list("role_id", flat=True).first()
+                assignment, created = ShiftAssignment.objects.update_or_create(
+                    shift=shift,
+                    team_member=user,
+                    defaults={"role_id": role_id, "assigned_by": request.user},
                 )
-                if conflicting:
-                    return JsonResponse(
-                        {"detail": "Member is already assigned to another shift during this time."},
-                        status=400,
+                if created or previous_role_id != role_id:
+                    shift_role_assignment = shift.role_assignments.select_related("role").filter(role_id=role_id).first() if role_id else None
+                    role = shift_role_assignment.role if shift_role_assignment else None
+                    transaction.on_commit(
+                        lambda event=event, user=user, shift=shift, role=role: _notify_shift_change_safely(
+                            event, user, shift, role, EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER
+                        )
                     )
-
-            previous_role_id = ShiftAssignment.objects.filter(shift=shift, team_member=user).values_list("role_id", flat=True).first()
-            assignment, created = ShiftAssignment.objects.update_or_create(
-                shift=shift,
-                team_member=user,
-                defaults={"role_id": role_id, "assigned_by": request.user},
-            )
-            if created or previous_role_id != role_id:
-                shift_role_assignment = shift.role_assignments.select_related("role").filter(role_id=role_id).first() if role_id else None
-                role = shift_role_assignment.role if shift_role_assignment else None
-                transaction.on_commit(
-                    lambda event=event, user=user, shift=shift, role=role: _notify_shift_change_safely(
-                        event, user, shift, role, EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER
-                    )
-                )
             shift = Shift.objects.prefetch_related(
                 "role_assignments__role",
                 "assignments__team_member",

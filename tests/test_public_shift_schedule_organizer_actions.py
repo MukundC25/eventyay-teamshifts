@@ -1,8 +1,11 @@
 import json
+import re
 from datetime import timedelta
 
 import pytest
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
@@ -200,6 +203,22 @@ def test_assigning_via_public_url_queues_the_organizer_assignment_email(orga_cli
         queued = TeamShiftsEmailQueue.objects.get(event=event, shift=shift)
         assert queued.shift_role_id == team_role.pk
         assert list(TeamShiftsEmailQueueRecipient.objects.filter(queue=queued).values_list("user_id", flat=True)) == [volunteer.pk]
+
+
+@pytest.mark.django_db
+def test_assigning_locks_shift_then_role_assignment_like_the_claim_path(orga_client, event, shift, team_role, volunteer, member_client):
+    url = reverse(
+        "plugins:teamshifts:public_shift_assignments",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+    )
+    payload = {"shift_id": shift.pk, "user_id": volunteer.pk, "role_id": team_role.pk}
+
+    with CaptureQueriesContext(connection) as queries:
+        response = orga_client.post(url, data=json.dumps(payload), content_type="application/json")
+
+    assert response.status_code == 200
+    locked_tables = [re.search(r'FROM "(\w+)"', query["sql"]).group(1) for query in queries if "FOR UPDATE" in query["sql"]]
+    assert locked_tables[:2] == ["teamshifts_shift", "teamshifts_shiftroleassignment"]
 
 
 @pytest.mark.django_db
