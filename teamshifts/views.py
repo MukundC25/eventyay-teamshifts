@@ -2194,16 +2194,14 @@ class ShiftScheduleTalkAPIView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 except (TypeError, ValueError, OverflowError):
                     return HttpResponseBadRequest("Invalid date format for 'start'/'end'.")
 
-                if "room" in data:
-                    room_id = data["room"]
-                    if isinstance(room_id, dict):
-                        room_id = room_id.get("id")
-                    shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
-
                 if shift.start_time and shift.end_time and shift.end_time <= shift.start_time:
                     return HttpResponseBadRequest("'end' must be after 'start'.")
-            else:
-                shift.location = None
+
+            if "room" in data:
+                room_id = data["room"]
+                if isinstance(room_id, dict):
+                    room_id = room_id.get("id")
+                shift.location = ShiftLocation.objects.filter(id=room_id, event=event).first() if room_id else None
 
             if "title" in data:
                 title_val = data["title"]

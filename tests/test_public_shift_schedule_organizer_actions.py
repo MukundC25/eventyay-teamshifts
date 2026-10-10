@@ -107,6 +107,36 @@ def test_organizer_can_edit_shift_via_public_manage_url(orga_client, event, shif
 
 
 @pytest.mark.django_db
+def test_partial_update_without_room_keeps_shift_location(orga_client, event, shift, team_role, location):
+    url = reverse(
+        "plugins:teamshifts:public_shift_manage",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": shift.pk},
+    )
+    payload = {"title": {"en": "Renamed"}, "roles": [{"id": team_role.pk, "capacity": 5}]}
+    response = orga_client.patch(url, data=json.dumps(payload), content_type="application/json")
+
+    assert response.status_code == 200
+    with scope(event=event):
+        shift.refresh_from_db()
+        assert shift.name == "Renamed"
+        assert shift.location_id == location.pk
+
+
+@pytest.mark.django_db
+def test_explicit_null_room_without_start_unschedules_shift(orga_client, event, shift, location):
+    url = reverse(
+        "plugins:teamshifts:public_shift_manage",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": shift.pk},
+    )
+    response = orga_client.patch(url, data=json.dumps({"room": None, "title": {"en": "Morning Shift"}}), content_type="application/json")
+
+    assert response.status_code == 200
+    with scope(event=event):
+        shift.refresh_from_db()
+        assert shift.location_id is None
+
+
+@pytest.mark.django_db
 def test_organizer_can_delete_shift_via_public_manage_url(orga_client, event, shift):
     url = reverse(
         "plugins:teamshifts:public_shift_manage",
@@ -148,6 +178,29 @@ def test_organizer_can_assign_and_unassign_member_via_public_assignments_url(org
 
     with scope(event=event):
         assert not ShiftAssignment.objects.filter(shift=shift, team_member=volunteer).exists()
+
+
+@pytest.mark.django_db
+def test_assigning_beyond_role_capacity_is_rejected(orga_client, event, shift, team_role):
+    url = reverse(
+        "plugins:teamshifts:public_shift_assignments",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+    )
+    members = []
+    with scope(event=event):
+        for index in range(3):
+            member = User.objects.create_user(email=f"member{index}@example.com", password="password")
+            TeamMemberApplication.objects.create(event=event, user=member, status=ApplicationStatus.ACCEPTED)
+            members.append(member)
+
+    statuses = []
+    for member in members:
+        payload = {"shift_id": shift.pk, "user_id": member.pk, "role_id": team_role.pk}
+        statuses.append(orga_client.post(url, data=json.dumps(payload), content_type="application/json").status_code)
+
+    assert statuses == [200, 200, 400]
+    with scope(event=event):
+        assert ShiftAssignment.objects.filter(shift=shift, role=team_role).count() == 2
 
 
 @pytest.mark.django_db
