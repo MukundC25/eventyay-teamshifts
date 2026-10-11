@@ -83,7 +83,7 @@
                             <i class="fa fa-edit"></i>
                         </a>
                         {% if can_manage_shifts %}
-                        <a href="{% url 'plugins:teamshifts:shift_clone' organizer=request.event.organizer.slug event=request.event.slug pk=shift.pk %}" class="btn btn-default btn-sm" data-toggle="tooltip" title="{% trans 'Clone' %}">
+                        <a href="{% url 'plugins:teamshifts:shift_duplicate' organizer=request.event.organizer.slug event=request.event.slug pk=shift.pk %}" class="btn btn-default btn-sm" data-toggle="tooltip" title="{% trans 'Duplicate' %}">
                             <i class="fa fa-copy"></i>
                         </a>
                         {% endif %}

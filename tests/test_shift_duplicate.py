@@ -58,16 +58,16 @@ def source_shift(event, location, roles):
     return shift
 
 
-def clone_url(event, shift):
+def duplicate_url(event, shift):
     return reverse(
-        "plugins:teamshifts:shift_clone",
+        "plugins:teamshifts:shift_duplicate",
         kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": shift.pk},
     )
 
 
 @pytest.mark.django_db
-def test_shift_clone_form_is_prefilled(orga_client, event, source_shift, location, roles):
-    response = orga_client.get(clone_url(event, source_shift))
+def test_shift_duplicate_form_is_prefilled(orga_client, event, source_shift, location, roles):
+    response = orga_client.get(duplicate_url(event, source_shift))
     assert response.status_code == 200
     form = response.context["form"]
     assert form.initial["name"] == "Setup"
@@ -77,18 +77,18 @@ def test_shift_clone_form_is_prefilled(orga_client, event, source_shift, locatio
     assert form.initial["end_time"] == source_shift.end_time
     formset = response.context["formset"]
     assert [(f.initial["role"], f.initial["capacity"]) for f in formset.forms] == [(roles[0].pk, 4), (roles[1].pk, 1)]
-    assert response.context["is_clone"] is True
+    assert response.context["is_duplicate"] is True
 
 
 @pytest.mark.django_db
-def test_shift_clone_get_does_not_create_shift(orga_client, event, source_shift):
-    orga_client.get(clone_url(event, source_shift))
+def test_shift_duplicate_get_does_not_create_shift(orga_client, event, source_shift):
+    orga_client.get(duplicate_url(event, source_shift))
     with scope(event=event):
         assert Shift.objects.count() == 1
 
 
 @pytest.mark.django_db
-def test_shift_clone_save_creates_independent_shift(orga_client, event, source_shift, location, roles):
+def test_shift_duplicate_save_creates_independent_shift(orga_client, event, source_shift, location, roles):
     start = source_shift.start_time + timedelta(days=1)
     data = {
         "mode": "single",
@@ -105,22 +105,22 @@ def test_shift_clone_save_creates_independent_shift(orga_client, event, source_s
         "roles-1-role": roles[1].pk,
         "roles-1-capacity": "1",
     }
-    response = orga_client.post(clone_url(event, source_shift), data)
+    response = orga_client.post(duplicate_url(event, source_shift), data)
     assert response.status_code == 302
     with scope(event=event):
         assert Shift.objects.count() == 2
-        clone = Shift.objects.exclude(pk=source_shift.pk).get()
-        assert clone.assignments.count() == 0
-        assert clone.role_assignments.count() == 2
+        duplicate = Shift.objects.exclude(pk=source_shift.pk).get()
+        assert duplicate.assignments.count() == 0
+        assert duplicate.role_assignments.count() == 2
         assert source_shift.assignments.count() == 1
         assert source_shift.role_assignments.count() == 2
-        clone.delete()
+        duplicate.delete()
         assert Shift.objects.filter(pk=source_shift.pk).exists()
         assert source_shift.role_assignments.count() == 2
 
 
 @pytest.mark.django_db
-def test_shift_clone_from_other_event_is_404(orga_client, event, source_shift):
+def test_shift_duplicate_from_other_event_is_404(orga_client, event, source_shift):
     with scope(event=event):
         other_event = Event.objects.create(
             organizer=event.organizer,
@@ -130,16 +130,16 @@ def test_shift_clone_from_other_event_is_404(orga_client, event, source_shift):
             plugins="teamshifts",
         )
     url = reverse(
-        "plugins:teamshifts:shift_clone",
+        "plugins:teamshifts:shift_duplicate",
         kwargs={"organizer": event.organizer.slug, "event": other_event.slug, "pk": source_shift.pk},
     )
     assert orga_client.get(url).status_code == 404
 
 
 @pytest.mark.django_db
-def test_shift_clone_post_with_missing_source_is_404(orga_client, event, source_shift, location, roles):
+def test_shift_duplicate_post_with_missing_source_is_404(orga_client, event, source_shift, location, roles):
     url = reverse(
-        "plugins:teamshifts:shift_clone",
+        "plugins:teamshifts:shift_duplicate",
         kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": source_shift.pk + 999},
     )
     start = source_shift.start_time + timedelta(days=1)
@@ -162,17 +162,17 @@ def test_shift_clone_post_with_missing_source_is_404(orga_client, event, source_
 
 
 @pytest.mark.django_db
-def test_shift_clone_requires_permission(client, event, source_shift, django_user_model, settings):
+def test_shift_duplicate_requires_permission(client, event, source_shift, django_user_model, settings):
     settings.SITE_URL = "https://testserver"
     outsider = django_user_model.objects.create_user(email="outsider@example.com", password="x")
     client.force_login(outsider)
-    assert client.get(clone_url(event, source_shift)).status_code == 404
+    assert client.get(duplicate_url(event, source_shift)).status_code == 404
     with scope(event=event):
         assert Shift.objects.count() == 1
 
 
 @pytest.mark.django_db
-def test_shift_list_shows_clone_button(orga_client, event, source_shift):
+def test_shift_list_shows_duplicate_button(orga_client, event, source_shift):
     url = reverse("plugins:teamshifts:shifts", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     response = orga_client.get(url)
-    assert clone_url(event, source_shift) in response.content.decode()
+    assert duplicate_url(event, source_shift) in response.content.decode()

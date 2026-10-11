@@ -1790,7 +1790,7 @@ class ShiftCreateView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Temp
         return self.render_to_response(ctx)
 
 
-class ShiftCloneView(ShiftCreateView):
+class ShiftDuplicateView(ShiftCreateView):
     def get_source_shift(self):
         return get_object_or_404(Shift.objects.prefetch_related("role_assignments"), pk=self.kwargs.get("pk"), event=self.request.event)
 
@@ -1807,7 +1807,7 @@ class ShiftCloneView(ShiftCreateView):
             kwargs["form"] = ShiftForm(event=self.request.event, initial=model_to_dict(source, fields=ShiftForm._meta.fields))
             kwargs["formset"] = formset_class(prefix="roles", initial=role_initial, form_kwargs={"event": self.request.event})
         ctx = super().get_context_data(**kwargs)
-        ctx["is_clone"] = True
+        ctx["is_duplicate"] = True
         return ctx
 
 
