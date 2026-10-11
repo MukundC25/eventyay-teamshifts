@@ -195,3 +195,18 @@ def test_deleted_member_code_is_not_reallocated(event, cfm, voucher_settings, vo
     assert result["sent"] == 1
     with scopes_disabled():
         assert MemberVoucher.objects.get(application=newcomer).voucher.code != sent_code
+
+
+@pytest.mark.django_db
+def test_application_deleted_before_send_is_skipped(event, cfm, voucher_settings, voucher_batch, django_user_model):
+    gone = _make_member(event, "gone@example.com", django_user_model)
+    kept = _make_member(event, "kept@example.com", django_user_model)
+    with scopes_disabled():
+        TeamMemberApplication.objects.filter(pk=gone.pk).delete()
+
+    with patch("teamshifts.services.vouchers._send_voucher_email", return_value=True):
+        result = allocate_and_send_vouchers(event, voucher_settings, [gone, kept])
+
+    assert result["sent"] == 1
+    with scopes_disabled():
+        assert MemberVoucher.objects.count() == 1

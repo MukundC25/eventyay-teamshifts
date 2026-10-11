@@ -197,8 +197,8 @@ def test_members_voucher_filter(orga_client, event, django_user_model):
         for name in ("not-sent", "sent", "claimed"):
             user = django_user_model.objects.create_user(email=f"{name}@example.com", password="x")
             apps[name] = TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
-        MemberVoucher.objects.create(application=apps["sent"], voucher=sent_voucher, status=VoucherStatus.SENT)
-        MemberVoucher.objects.create(application=apps["claimed"], voucher=claimed_voucher, status=VoucherStatus.SENT)
+        MemberVoucher.objects.create(event=event, application=apps["sent"], voucher=sent_voucher, status=VoucherStatus.SENT)
+        MemberVoucher.objects.create(event=event, application=apps["claimed"], voucher=claimed_voucher, status=VoucherStatus.SENT)
         claimed_voucher.redeemed = 1
         claimed_voucher.save(update_fields=["redeemed"])
 

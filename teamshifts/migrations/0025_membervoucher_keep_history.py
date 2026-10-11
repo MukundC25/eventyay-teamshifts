@@ -14,7 +14,7 @@ def backfill_event(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0001_initial"),
-        ("teamshifts", "0023_shiftlocation_linked_room"),
+        ("teamshifts", "0024_shift_notification_queue_fields"),
     ]
 
     operations = [

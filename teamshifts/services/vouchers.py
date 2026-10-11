@@ -99,7 +99,8 @@ def allocate_and_send_vouchers(
             continue
 
         with scope(event=event), transaction.atomic():
-            TeamMemberApplication.objects.select_for_update().filter(pk=application.pk).first()
+            if TeamMemberApplication.objects.select_for_update().filter(pk=application.pk).first() is None:
+                continue
             if MemberVoucher.objects.filter(application=application).exists():
                 continue
 
