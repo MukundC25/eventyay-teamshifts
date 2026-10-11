@@ -3,7 +3,7 @@ from django_scopes import scope
 from eventyay.base.models import User
 from eventyay.person.services import create_user
 
-from ..models import ApplicationStatus, TeamApplicationAnswer, TeamMemberApplication
+from ..models import ApplicationStatus, ArchivedApplicationAnswer, TeamApplicationAnswer, TeamApplicationQuestion, TeamMemberApplication
 
 
 class AlreadyMemberError(Exception):
@@ -79,3 +79,23 @@ def accept_manager_as_member(*, event, user) -> tuple[TeamMemberApplication, boo
             application.added_by_organizer = True
             application.save(update_fields=["status", "added_by_organizer", "updated_at"])
     return application, promoted
+
+
+def archive_question_answers(question: TeamApplicationQuestion) -> None:
+    """Keep the answers of a question that is about to be deleted so exports still include them."""
+    with scope(event=question.event):
+        answers = question.answers.exclude(answer="").select_related("application")
+        ArchivedApplicationAnswer.objects.bulk_create(
+            [
+                ArchivedApplicationAnswer(
+                    event=question.event,
+                    application=answer.application,
+                    question_id=question.pk,
+                    question_text=str(question.question),
+                    variant=question.variant,
+                    answer=answer.answer,
+                )
+                for answer in answers
+            ],
+            ignore_conflicts=True,
+        )

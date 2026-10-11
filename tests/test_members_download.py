@@ -23,6 +23,11 @@ from teamshifts.models import (
 from teamshifts.services.members_export import format_answer, format_hours, render_csv, render_xlsx
 
 
+@pytest.fixture(autouse=True)
+def site_url(settings):
+    settings.SITE_URL = "https://testserver"
+
+
 @pytest.fixture
 def cfm(event):
     with scope(event=event):
@@ -184,3 +189,43 @@ def test_members_page_shows_download_only_to_coordinators(client, event, cfm, or
     assert "format=xlsx" in client.get(members_url).content.decode()
     client.force_login(lead_user)
     assert "format=xlsx" not in client.get(members_url).content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["99999999999999999999", "\u00b2", "-1", "abc"])
+def test_download_ignores_invalid_role_filter(client, event, cfm, orga_user, django_user_model, role):
+    with scope(event=event):
+        _member(event, django_user_model, "a@example.com", "Alice")
+    client.force_login(orga_user)
+    response = client.get(_url(event), {"format": "csv", "role": role})
+    assert response.status_code == 200
+    assert "a@example.com" in response.content.decode("utf-8-sig")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("role", ["99999999999999999999", "\u00b2"])
+def test_members_page_ignores_invalid_role_filter(client, event, cfm, orga_user, role):
+    members_url = reverse("plugins:teamshifts:members", kwargs={"organizer": event.organizer.slug, "event": event.slug})
+    client.force_login(orga_user)
+    assert client.get(members_url, {"role": role}).status_code == 200
+
+
+@pytest.mark.django_db
+def test_deleted_question_keeps_column_and_answers(client, event, cfm, orga_user, django_user_model):
+    with scope(event=event):
+        question = TeamApplicationQuestion.objects.create(event=event, question="Diet", variant=QuestionVariant.STRING)
+        answered = _member(event, django_user_model, "a@example.com", "Alice")
+        _member(event, django_user_model, "b@example.com", "Bob")
+        TeamApplicationAnswer.objects.create(application=answered, question=question, answer="Vegan")
+    client.force_login(orga_user)
+    delete_url = reverse("plugins:teamshifts:question_delete", kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": question.pk})
+    assert client.post(delete_url).status_code == 302
+    with scope(event=event):
+        assert not TeamApplicationQuestion.objects.filter(pk=question.pk).exists()
+
+    rows = _rows(client.get(_url(event), {"format": "xlsx"}))
+    assert rows[0][-1] == "Diet"
+    alice = next(row for row in rows[1:] if row[1] == "a@example.com")
+    bob = next(row for row in rows[1:] if row[1] == "b@example.com")
+    assert alice[-1] == "Vegan"
+    assert bob[-1] is None

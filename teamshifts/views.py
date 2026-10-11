@@ -82,7 +82,7 @@ from .permissions import (
 from .services.certificates import maybe_auto_issue_certificate
 from .services.checkin import evaluate_shift_certificate, stamp_shift_end
 from .services.email import get_recipients, queue_email, queue_lifecycle_email, queue_shift_notification_email
-from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer
+from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer, archive_question_answers
 from .services.members_export import (
     EXPORT_FORMAT_CSV,
     EXPORT_FORMAT_XLSX,
@@ -670,7 +670,9 @@ class QuestionDeleteView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, V
             question = get_object_or_404(TeamApplicationQuestion, pk=kwargs["pk"], event=event)
             label = str(question.question)
             pk = question.pk
-            question.delete()
+            with transaction.atomic():
+                archive_question_answers(question)
+                question.delete()
             try:
                 cfm = event.call_for_team_members
                 cfm.field_order = [item for item in cfm.field_order if item != pk]

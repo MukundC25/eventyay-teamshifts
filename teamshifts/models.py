@@ -532,6 +532,38 @@ class TeamApplicationAnswer(models.Model):
         return f"{self.application} → {self.question}: {self.answer[:30]}"
 
 
+class ArchivedApplicationAnswer(models.Model):
+    """
+    An answer kept after its :class:`TeamApplicationQuestion` was deleted, so exports retain it.
+    """
+
+    event = models.ForeignKey(
+        "base.Event",
+        on_delete=models.CASCADE,
+        related_name="archived_application_answers",
+    )
+    application = models.ForeignKey(
+        TeamMemberApplication,
+        on_delete=models.CASCADE,
+        related_name="archived_answers",
+    )
+    question_id = models.PositiveIntegerField()
+    question_text = models.TextField()
+    variant = models.CharField(max_length=20, choices=QuestionVariant.choices, default=QuestionVariant.STRING)
+    answer = models.TextField(blank=True)
+
+    objects = ScopedManager(event="event")
+
+    class Meta:
+        verbose_name = _("Archived Application Answer")
+        verbose_name_plural = _("Archived Application Answers")
+        unique_together = ("application", "question_id")
+        ordering = ["question_id"]
+
+    def __str__(self):
+        return f"{self.application} → {self.question_text}: {self.answer[:30]}"
+
+
 class TeamShiftsEmailQueue(models.Model):
     event = models.ForeignKey(
         "base.Event",
