@@ -2,6 +2,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from django import forms
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape as html_escape
 from django.utils.translation import gettext_lazy as _
@@ -9,9 +10,10 @@ from django_countries import countries
 from django_scopes import scopes_disabled
 from django_scopes.forms import SafeModelChoiceField
 from eventyay.base.forms.questions import WrappedPhoneNumberPrefixWidget, guess_country
-from eventyay.base.models import Event
+from eventyay.base.models import Event, User
 from eventyay.common.forms.widgets import I18nEmailEditorWidget, RichTextWidget
 from eventyay.control.forms import SplitDateTimeField, SplitDateTimePickerWidget
+from eventyay.control.forms.widgets import Select2Multiple
 from i18nfield.forms import I18nFormField, I18nTextInput
 from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.phonenumber import to_python as to_phone_number
@@ -489,8 +491,25 @@ class CustomEmailTemplateForm(forms.ModelForm):
                 self.fields[field_name].widget.enabled_locales = locales
 
 
+def volunteer_choice_label(user, show_email):
+    name = (user.fullname or "").strip()
+    email = (user.email or "").strip()
+    if show_email:
+        return f"{name} ({email})" if name and email else name or email
+    return name or _("Volunteer #%(pk)s") % {"pk": user.pk}
+
+
+class VolunteerChoiceField(forms.ModelMultipleChoiceField):
+    def __init__(self, *args, show_email=False, **kwargs):
+        self.show_email = show_email
+        super().__init__(*args, **kwargs)
+
+    def label_from_instance(self, obj):
+        return volunteer_choice_label(obj, self.show_email)
+
+
 class EmailComposeForm(forms.Form):
-    def __init__(self, *args, event=None, **kwargs):
+    def __init__(self, *args, event=None, show_emails=False, **kwargs):
         super().__init__(*args, **kwargs)
         self._event = event
         locales = list(event.settings.get("locales") or [event.settings.locale])
@@ -517,7 +536,26 @@ class EmailComposeForm(forms.Form):
             required=False,
             initial=ApplicationStatus.ACCEPTED,
             label=_("Send to applications with status"),
-            widget=forms.Select(attrs={"class": "form-control"}),
+            widget=forms.Select(attrs={"class": "form-control select2-static"}),
+        )
+
+        self.fields["individual_volunteers"] = VolunteerChoiceField(
+            queryset=User.objects.filter(team_member_applications__event=event),
+            required=False,
+            show_email=show_emails,
+            label=_("Send to specific volunteers"),
+            help_text=_("Optional. When volunteers are selected here, only they receive the email and the status filter is ignored."),
+            widget=Select2Multiple(
+                attrs={
+                    "data-model-select2": "generic",
+                    "data-select2-url": reverse(
+                        "plugins:teamshifts:compose_volunteers_select2",
+                        kwargs={"organizer": event.organizer.slug, "event": event.slug},
+                    ),
+                    "data-placeholder": _("Search by name or email") if show_emails else _("Search by name"),
+                    "data-compose-volunteers": "1",
+                }
+            ),
         )
 
         self.fields["send_after"] = forms.DateTimeField(

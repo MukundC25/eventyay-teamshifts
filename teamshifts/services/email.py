@@ -24,10 +24,14 @@ def get_recipients(
     event: Event,
     *,
     status: str = ApplicationStatus.ACCEPTED,
+    user_ids: Iterable[int] | None = None,
 ) -> list[User]:
+    user_ids = list(user_ids or ())
     with scope(event=event):
         qs = TeamMemberApplication.objects.filter(event=event)
-        if status:
+        if user_ids:
+            qs = qs.filter(user_id__in=user_ids)
+        elif status:
             qs = qs.filter(status=status)
         user_ids = list(qs.values_list("user_id", flat=True).distinct())
     return list(User.objects.filter(pk__in=user_ids))

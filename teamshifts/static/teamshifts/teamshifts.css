@@ -389,3 +389,7 @@ label .optional {
 .ts-send-vouchers-hint[hidden] {
   display: none;
 }
+
+[data-compose-status].is-overridden {
+  opacity: 0.5;
+}
