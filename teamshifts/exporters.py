@@ -10,6 +10,7 @@ from .models import ArchivedApplicationAnswer, CallForTeamMembers, QuestionVaria
 
 EXPORT_FORMAT_XLSX = "xlsx"
 EXPORT_FORMAT_CSV = "default"
+EXPORT_FORMATS = (EXPORT_FORMAT_XLSX, EXPORT_FORMAT_CSV)
 
 DATETIME_ANSWER_FORMAT = "%Y-%m-%d %H:%M"
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -91,6 +92,12 @@ class MembersExporter(ListExporter):
     def __init__(self, event, members, progress_callback=lambda v: None):
         super().__init__(event, progress_callback)
         self.members = members
+
+    @property
+    def export_form_fields(self) -> dict:
+        fields = super().export_form_fields
+        fields["_format"].choices = [(value, label) for value, label in fields["_format"].choices if value in EXPORT_FORMATS]
+        return fields
 
     def get_filename(self):
         today = datetime.now(self.event.tz).strftime("%Y-%m-%d")

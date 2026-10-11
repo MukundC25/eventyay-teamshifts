@@ -180,9 +180,10 @@ def test_download_role_filter_limits_members(client, event, cfm, orga_user, djan
 
 
 @pytest.mark.django_db
-def test_download_rejects_unknown_format(client, event, cfm, orga_user):
+@pytest.mark.parametrize("export_format", ["pdf", "csv-excel", "semicolon", "csv"])
+def test_download_rejects_unsupported_format(client, event, cfm, orga_user, export_format):
     client.force_login(orga_user)
-    assert client.get(_url(event), {"_format": "pdf"}).status_code == 400
+    assert client.get(_url(event), {"_format": export_format}).status_code == 400
 
 
 @pytest.mark.django_db
