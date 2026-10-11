@@ -9,6 +9,7 @@ from django_scopes import scope
 from eventyay.base.models import Team
 from openpyxl import load_workbook
 
+from teamshifts.exporters import MembersExporter, format_answer, format_hours
 from teamshifts.models import (
     ApplicationStatus,
     CallForTeamMembers,
@@ -20,7 +21,6 @@ from teamshifts.models import (
     TeamMemberApplication,
     TeamRole,
 )
-from teamshifts.services.members_export import format_answer, format_hours, render_csv, render_xlsx
 
 
 @pytest.fixture(autouse=True)
@@ -86,16 +86,30 @@ def test_format_hours():
     assert format_hours(timedelta(hours=2, minutes=30)) == 2.5
 
 
-def test_csv_escapes_formulas():
-    payload = render_csv(["Name"], [["=cmd()"]]).decode("utf-8-sig")
-    assert "=cmd()" not in payload.replace("'=cmd()", "")
+@pytest.mark.django_db
+def test_csv_escapes_formulas(client, event, cfm, orga_user, django_user_model):
+    with scope(event=event):
+        _member(event, django_user_model, "a@example.com", "=cmd()")
+    client.force_login(orga_user)
+    body = client.get(_url(event), {"_format": "default"}).content.decode("utf-8")
+    assert '"=cmd()"' not in body
+    assert "'=cmd()" in body
 
 
-def test_xlsx_stores_formula_like_text_as_string():
-    workbook = load_workbook(io.BytesIO(render_xlsx(["Name"], [["=1+1"]])))
-    cell = workbook.active["A2"]
-    assert cell.value == "=1+1"
+@pytest.mark.django_db
+def test_xlsx_stores_formula_like_text_as_string(client, event, cfm, orga_user, django_user_model):
+    with scope(event=event):
+        _member(event, django_user_model, "a@example.com", "=1+1")
+    client.force_login(orga_user)
+    workbook = load_workbook(io.BytesIO(client.get(_url(event), {"_format": "xlsx"}).content))
+    cell = next(row for row in workbook.active.iter_rows(min_row=2))[0]
     assert cell.data_type == "s"
+    assert cell.value == "'=1+1"
+
+
+@pytest.mark.django_db
+def test_exporter_filename_uses_event_slug_and_date(event):
+    assert MembersExporter(event, []).get_filename().startswith(f"{event.slug}-members-")
 
 
 @pytest.mark.django_db
@@ -113,7 +127,7 @@ def test_download_xlsx_contains_members_and_answers(client, event, cfm, orga_use
         ShiftAssignment.objects.create(shift=shift, team_member=member.user, role=role)
 
     client.force_login(orga_user)
-    response = client.get(_url(event), {"format": "xlsx"})
+    response = client.get(_url(event), {"_format": "xlsx"})
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith(f'attachment; filename="{event.slug}-members-')
     assert response["Content-Disposition"].endswith('.xlsx"')
@@ -141,7 +155,7 @@ def test_download_csv_respects_search_filter(client, event, cfm, orga_user, djan
         _member(event, django_user_model, "a@example.com", "Alice")
         _member(event, django_user_model, "b@example.com", "Bob")
     client.force_login(orga_user)
-    response = client.get(_url(event), {"format": "csv", "q": "alice"})
+    response = client.get(_url(event), {"_format": "default", "q": "alice"})
     assert response.status_code == 200
     assert response["Content-Type"].startswith("text/csv")
     body = response.content.decode("utf-8-sig")
@@ -159,7 +173,7 @@ def test_download_role_filter_limits_members(client, event, cfm, orga_user, djan
         shift = Shift.objects.create(event=event, name="Desk", start_time=start, end_time=start + timedelta(hours=1))
         ShiftAssignment.objects.create(shift=shift, team_member=member.user, role=role)
     client.force_login(orga_user)
-    response = client.get(_url(event), {"format": "csv", "role": role.pk})
+    response = client.get(_url(event), {"_format": "default", "role": role.pk})
     body = response.content.decode("utf-8-sig")
     assert "a@example.com" in body
     assert "b@example.com" not in body
@@ -168,27 +182,27 @@ def test_download_role_filter_limits_members(client, event, cfm, orga_user, djan
 @pytest.mark.django_db
 def test_download_rejects_unknown_format(client, event, cfm, orga_user):
     client.force_login(orga_user)
-    assert client.get(_url(event), {"format": "pdf"}).status_code == 400
+    assert client.get(_url(event), {"_format": "pdf"}).status_code == 400
 
 
 @pytest.mark.django_db
 def test_download_forbidden_for_team_lead(client, event, cfm, lead_user):
     client.force_login(lead_user)
-    assert client.get(_url(event), {"format": "csv"}).status_code == 403
+    assert client.get(_url(event), {"_format": "default"}).status_code == 403
 
 
 @pytest.mark.django_db
 def test_download_requires_login(client, event, cfm):
-    assert client.get(_url(event), {"format": "csv"}).status_code in (302, 403)
+    assert client.get(_url(event), {"_format": "default"}).status_code in (302, 403)
 
 
 @pytest.mark.django_db
 def test_members_page_shows_download_only_to_coordinators(client, event, cfm, orga_user, lead_user):
     members_url = reverse("plugins:teamshifts:members", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     client.force_login(orga_user)
-    assert "format=xlsx" in client.get(members_url).content.decode()
+    assert "_format=xlsx" in client.get(members_url).content.decode()
     client.force_login(lead_user)
-    assert "format=xlsx" not in client.get(members_url).content.decode()
+    assert "_format=xlsx" not in client.get(members_url).content.decode()
 
 
 @pytest.mark.django_db
@@ -197,7 +211,7 @@ def test_download_ignores_invalid_role_filter(client, event, cfm, orga_user, dja
     with scope(event=event):
         _member(event, django_user_model, "a@example.com", "Alice")
     client.force_login(orga_user)
-    response = client.get(_url(event), {"format": "csv", "role": role})
+    response = client.get(_url(event), {"_format": "default", "role": role})
     assert response.status_code == 200
     assert "a@example.com" in response.content.decode("utf-8-sig")
 
@@ -223,7 +237,7 @@ def test_deleted_question_keeps_column_and_answers(client, event, cfm, orga_user
     with scope(event=event):
         assert not TeamApplicationQuestion.objects.filter(pk=question.pk).exists()
 
-    rows = _rows(client.get(_url(event), {"format": "xlsx"}))
+    rows = _rows(client.get(_url(event), {"_format": "xlsx"}))
     assert rows[0][-1] == "Diet"
     alice = next(row for row in rows[1:] if row[1] == "a@example.com")
     bob = next(row for row in rows[1:] if row[1] == "b@example.com")

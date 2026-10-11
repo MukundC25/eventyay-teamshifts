@@ -1,27 +1,18 @@
-import io
 from datetime import datetime
 from typing import NamedTuple
 
-from defusedcsv import csv
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
 from django_scopes import scope
-from openpyxl import Workbook
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-from openpyxl.styles import Font
+from eventyay.base.exporter import ListExporter
 
-from ..forms import render_answer_for_review
-from ..models import ArchivedApplicationAnswer, CallForTeamMembers, QuestionVariant, TeamApplicationAnswer, TeamApplicationQuestion
+from .forms import render_answer_for_review
+from .models import ArchivedApplicationAnswer, CallForTeamMembers, QuestionVariant, TeamApplicationAnswer, TeamApplicationQuestion
 
 EXPORT_FORMAT_XLSX = "xlsx"
-EXPORT_FORMAT_CSV = "csv"
-EXPORT_FORMATS = {
-    EXPORT_FORMAT_XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    EXPORT_FORMAT_CSV: "text/csv; charset=utf-8",
-}
+EXPORT_FORMAT_CSV = "default"
 
-XLSX_CELL_LIMIT = 32767
 DATETIME_ANSWER_FORMAT = "%Y-%m-%d %H:%M"
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 class ArchivedQuestion(NamedTuple):
@@ -39,9 +30,8 @@ def get_export_questions(event) -> list[TeamApplicationQuestion | ArchivedQuesti
         except CallForTeamMembers.DoesNotExist:
             field_order = []
         archived = {}
-        for question_id, question_text, variant in (
-            ArchivedApplicationAnswer.objects.filter(event=event).order_by("pk").values_list("question_id", "question_text", "variant")
-        ):
+        archived_rows = ArchivedApplicationAnswer.objects.filter(event=event).order_by("pk").values_list("question_id", "question_text", "variant")
+        for question_id, question_text, variant in archived_rows:
             archived[question_id] = ArchivedQuestion(question_id, question_text, variant)
     positions = {item: index for index, item in enumerate(field_order) if isinstance(item, int)}
     fallback = len(positions)
@@ -88,28 +78,41 @@ def get_member_roles(member) -> str:
     return ", ".join(names)
 
 
-def build_header(questions) -> list[str]:
-    fixed = [
-        _("Name"),
-        _("Email"),
-        _("Phone"),
-        _("Role(s)"),
-        _("Shifts assigned"),
-        _("Hours scheduled"),
-        _("Arrived"),
-        _("Availability notes"),
-        _("Application status"),
-        _("Date applied"),
-        _("Added by organizer"),
-    ]
-    return [str(column) for column in fixed] + [str(question.question) for question in questions]
+def neutralize_formula(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
 
 
-def build_rows(event, members, questions) -> list[list]:
-    tz = event.tz
-    answers = get_answer_map(event, [member.pk for member in members])
-    rows = []
-    for member in members:
+class MembersExporter(ListExporter):
+    identifier = "teamshifts_members"
+    verbose_name = gettext_lazy("Members")
+
+    def __init__(self, event, members, progress_callback=lambda v: None):
+        super().__init__(event, progress_callback)
+        self.members = members
+
+    def get_filename(self):
+        today = datetime.now(self.event.tz).strftime("%Y-%m-%d")
+        return f"{self.event.slug}-members-{today}"
+
+    def get_header(self, questions) -> list[str]:
+        fixed = [
+            _("Name"),
+            _("Email"),
+            _("Phone"),
+            _("Role(s)"),
+            _("Shifts assigned"),
+            _("Hours scheduled"),
+            _("Arrived"),
+            _("Availability notes"),
+            _("Application status"),
+            _("Date applied"),
+            _("Added by organizer"),
+        ]
+        return [str(column) for column in fixed] + [str(question.question) for question in questions]
+
+    def get_row(self, member, questions, answers, tz) -> list:
         row = [
             member.user.fullname or member.user.email,
             member.user.email,
@@ -124,48 +127,14 @@ def build_rows(event, members, questions) -> list[list]:
             format_yes_no(member.added_by_organizer),
         ]
         row.extend(format_answer(question, answers.get((member.pk, question.pk), ""), tz) for question in questions)
-        rows.append(row)
-    return rows
+        return row
 
-
-def render_csv(header, rows) -> bytes:
-    output = io.StringIO()
-    writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC, delimiter=",")
-    writer.writerow(header)
-    writer.writerows(rows)
-    return output.getvalue().encode("utf-8-sig")
-
-
-def _make_cell(worksheet, value, font=None):
-    if isinstance(value, str):
-        cell = WriteOnlyCell(worksheet, value=ILLEGAL_CHARACTERS_RE.sub("", value)[:XLSX_CELL_LIMIT])
-        cell.data_type = "s"
-    else:
-        cell = WriteOnlyCell(worksheet, value=value)
-    if font:
-        cell.font = font
-    return cell
-
-
-def render_xlsx(header, rows) -> bytes:
-    workbook = Workbook(write_only=True)
-    worksheet = workbook.create_sheet(str(_("Members")))
-    worksheet.freeze_panes = "A2"
-    bold = Font(bold=True)
-    worksheet.append([_make_cell(worksheet, value, font=bold) for value in header])
-    for row in rows:
-        worksheet.append([_make_cell(worksheet, value) for value in row])
-    output = io.BytesIO()
-    workbook.save(output)
-    return output.getvalue()
-
-
-def render_export(export_format, header, rows) -> bytes:
-    if export_format == EXPORT_FORMAT_XLSX:
-        return render_xlsx(header, rows)
-    return render_csv(header, rows)
-
-
-def export_filename(event, export_format) -> str:
-    today = datetime.now(event.tz).strftime("%Y-%m-%d")
-    return f"{event.slug}-members-{today}.{export_format}"
+    def iterate_list(self, form_data):
+        tz = self.event.tz
+        questions = get_export_questions(self.event)
+        answers = get_answer_map(self.event, [member.pk for member in self.members])
+        guard = neutralize_formula if form_data.get("_format") == EXPORT_FORMAT_XLSX else lambda value: value
+        yield self.ProgressSetTotal(total=len(self.members))
+        yield [guard(value) for value in self.get_header(questions)]
+        for member in self.members:
+            yield [guard(value) for value in self.get_row(member, questions, answers, tz)]

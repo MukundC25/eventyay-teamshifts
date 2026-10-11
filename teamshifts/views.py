@@ -30,9 +30,11 @@ from eventyay.base.i18n import LazyI18nString, language
 from eventyay.base.models import Event, User
 from eventyay.base.templatetags.rich_text import compile_email_body, rich_text
 from eventyay.common.text.phrases import phrases
+from eventyay.control.forms.orders import ExporterForm
 from eventyay.control.views import PaginationMixin
 from eventyay.multidomain.urlreverse import build_absolute_uri
 
+from .exporters import EXPORT_FORMAT_CSV, EXPORT_FORMAT_XLSX, MembersExporter
 from .forms import (
     BaseShiftRoleFormSet,
     CallForTeamMembersApplicationSettingsForm,
@@ -83,16 +85,6 @@ from .services.certificates import maybe_auto_issue_certificate
 from .services.checkin import evaluate_shift_certificate, stamp_shift_end
 from .services.email import get_recipients, queue_email, queue_lifecycle_email, queue_shift_notification_email
 from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer, archive_question_answers
-from .services.members_export import (
-    EXPORT_FORMAT_CSV,
-    EXPORT_FORMAT_XLSX,
-    EXPORT_FORMATS,
-    build_header,
-    build_rows,
-    export_filename,
-    get_export_questions,
-    render_export,
-)
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
@@ -1997,8 +1989,8 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Memb
                 kwargs={"organizer": self.request.organizer.slug, "event": self.request.event.slug},
             )
             filters = {key: self.request.GET[key].strip() for key in ("q", "role", "voucher") if self.request.GET.get(key, "").strip()}
-            ctx["download_xlsx_url"] = f"{download_url}?{urlencode({**filters, 'format': EXPORT_FORMAT_XLSX})}"
-            ctx["download_csv_url"] = f"{download_url}?{urlencode({**filters, 'format': EXPORT_FORMAT_CSV})}"
+            ctx["download_xlsx_url"] = f"{download_url}?{urlencode({**filters, '_format': EXPORT_FORMAT_XLSX})}"
+            ctx["download_csv_url"] = f"{download_url}?{urlencode({**filters, '_format': EXPORT_FORMAT_CSV})}"
 
         voucher_settings = self._get_voucher_settings()
         ctx["vouchers_enabled"] = self._vouchers_enabled(voucher_settings)
@@ -2025,16 +2017,16 @@ class MembersExportView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Me
     permission = "can_teamshifts_manage_applicants"
 
     def get(self, request, *args, **kwargs):
-        export_format = request.GET.get("format", EXPORT_FORMAT_XLSX)
-        if export_format not in EXPORT_FORMATS:
-            return HttpResponseBadRequest("Unsupported export format.")
         event = request.event
         with scope(event=event):
-            members = list(self.get_queryset())
-        questions = get_export_questions(event)
-        payload = render_export(export_format, build_header(questions), build_rows(event, members, questions))
-        response = HttpResponse(payload, content_type=EXPORT_FORMATS[export_format])
-        response["Content-Disposition"] = f'attachment; filename="{export_filename(event, export_format)}"'
+            exporter = MembersExporter(event, list(self.get_queryset()))
+        form = ExporterForm(data={"_format": request.GET.get("_format", EXPORT_FORMAT_XLSX)})
+        form.fields = exporter.export_form_fields
+        if not form.is_valid():
+            return HttpResponseBadRequest("Unsupported export format.")
+        filename, content_type, payload = exporter.render(form.cleaned_data)
+        response = HttpResponse(payload, content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         response["Cache-Control"] = "no-store"
         return response
 
