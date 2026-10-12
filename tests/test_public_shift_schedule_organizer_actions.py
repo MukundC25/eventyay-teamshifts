@@ -206,7 +206,7 @@ def test_assigning_via_public_url_queues_the_organizer_assignment_email(orga_cli
 
 
 @pytest.mark.django_db
-def test_assigning_locks_shift_then_role_assignment_like_the_claim_path(orga_client, event, shift, team_role, volunteer, member_client):
+def test_assigning_locks_shift_role_assignment_then_member_like_the_claim_path(orga_client, event, shift, team_role, volunteer, member_client):
     url = reverse(
         "plugins:teamshifts:public_shift_assignments",
         kwargs={"organizer": event.organizer.slug, "event": event.slug},
@@ -218,7 +218,24 @@ def test_assigning_locks_shift_then_role_assignment_like_the_claim_path(orga_cli
 
     assert response.status_code == 200
     locked_tables = [re.search(r'FROM "(\w+)"', query["sql"]).group(1) for query in queries if "FOR UPDATE" in query["sql"]]
-    assert locked_tables[:2] == ["teamshifts_shift", "teamshifts_shiftroleassignment"]
+    assert locked_tables[:3] == ["teamshifts_shift", "teamshifts_shiftroleassignment", User._meta.db_table]
+
+
+@pytest.mark.django_db
+def test_claiming_locks_the_member_after_the_shift(member_client, event, shift, team_role):
+    with scope(event=event):
+        CallForTeamMembers.objects.create(event=event, title="Join", active=True, shift_schedule_published=True)
+    url = reverse(
+        "plugins:teamshifts:public_shift_claim",
+        kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": shift.pk},
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        response = member_client.post(url, {"role_id": team_role.pk}, HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+
+    assert response.status_code == 200
+    locked_tables = [re.search(r'FROM "(\w+)"', query["sql"]).group(1) for query in queries if "FOR UPDATE" in query["sql"]]
+    assert locked_tables.index("teamshifts_shift") < locked_tables.index(User._meta.db_table)
 
 
 @pytest.mark.django_db

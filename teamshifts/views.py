@@ -2280,6 +2280,10 @@ class ShiftScheduleMembersAPIView(PluginActiveMixin, TeamShiftsPermissionRequire
             return JsonResponse({"members": members})
 
 
+def _lock_member_for_overlap_check(user):
+    User.objects.select_for_update().get(pk=user.pk)
+
+
 def _notify_shift_change_safely(event, user, shift, role, template_role):
     try:
         queue_shift_notification_email(
@@ -2374,6 +2378,7 @@ class ShiftScheduleAssignmentsAPIView(PluginActiveMixin, TeamShiftsPermissionReq
                                 status=400,
                             )
 
+                _lock_member_for_overlap_check(user)
                 if shift.start_time and shift.end_time:
                     conflicting = (
                         ShiftAssignment.objects.filter(
@@ -2818,6 +2823,7 @@ class ShiftClaimView(PublicShiftScheduleMixin, View):
                 current_count = ShiftAssignment.objects.filter(shift=shift, role_id=sra.role_id).exclude(team_member=request.user).count()
                 if current_count >= sra_locked.capacity:
                     return fail(_("Sorry, this role is now full."))
+                _lock_member_for_overlap_check(request.user)
                 if shift.start_time and shift.end_time:
                     conflicting = (
                         ShiftAssignment.objects.filter(
