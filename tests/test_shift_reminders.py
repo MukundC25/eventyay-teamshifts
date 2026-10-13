@@ -1,8 +1,9 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
+from django.utils.timezone import now
 from django_scopes import scope
 from eventyay.base.models import User
 from eventyay.base.services.mail import SendMailException
@@ -163,3 +164,29 @@ def test_my_shifts_page_offers_drop_action(client, event, cfm, accepted, assign,
 
     assert response.status_code == 200
     assert "Drop shift" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_no_reminder_once_first_shift_of_the_day_has_started(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START)
+    assign(FIRST_SHIFT_START + timedelta(hours=5))
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(FIRST_SHIFT_START + timedelta(hours=1))
+
+    mock_mail.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_interrupted_claim_is_recovered(event, cfm, accepted, assign, volunteer):
+    assign(FIRST_SHIFT_START)
+    with scope(event=event):
+        reminder = ShiftReminder.objects.create(event=event, user=volunteer, day=date(2026, 10, 11))
+        ShiftReminder.objects.filter(pk=reminder.pk).update(claimed_at=now() - timedelta(hours=1))
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(REMINDER_DUE_AT)
+
+    assert mock_mail.call_count == 1
+    with scope(event=event):
+        assert ShiftReminder.objects.get(pk=reminder.pk).sent_at is not None

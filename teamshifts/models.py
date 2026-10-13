@@ -462,7 +462,8 @@ class ShiftReminder(models.Model):
         related_name="teamshifts_shift_reminders",
     )
     day = models.DateField(help_text=_("Event-local date of the shifts this reminder covered."))
-    sent_at = models.DateTimeField(auto_now_add=True)
+    claimed_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
 
     objects = ScopedManager(event="event")
 

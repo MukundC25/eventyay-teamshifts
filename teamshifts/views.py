@@ -3016,6 +3016,7 @@ class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
 
 class ShiftWithdrawView(PublicShiftScheduleMixin, View):
     allow_teamshifts_managers = True
+    redirect_unpublished_to_schedule = False
 
     def post(self, request, *args, **kwargs):
         event = self.event

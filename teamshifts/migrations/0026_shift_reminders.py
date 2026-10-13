@@ -39,7 +39,8 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("day", models.DateField(help_text="Event-local date of the shifts this reminder covered.")),
-                ("sent_at", models.DateTimeField(auto_now_add=True)),
+                ("claimed_at", models.DateTimeField(auto_now_add=True)),
+                ("sent_at", models.DateTimeField(blank=True, null=True)),
                 ("event", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="teamshifts_shift_reminders", to="base.event")),
                 (
                     "user",
