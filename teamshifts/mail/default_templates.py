@@ -162,9 +162,9 @@ SHIFT_REMINDER_TEXT = LazyI18nString.from_gettext(
         "Hi {full_name},\n\n"
         "This is a reminder about your shifts tomorrow at {event_name}:\n\n"
         "{shift_list}\n\n"
-        "If you can no longer make a shift, please drop it on My Shifts so "
+        "If you can no longer make a shift, please drop it on the shift schedule so "
         "the organizers can find a replacement in time:\n"
-        "{my_shifts_url}\n\n"
+        "{shift_schedule_url}\n\n"
         "Thank you for volunteering!\n"
         "The {event_name} team"
     )
