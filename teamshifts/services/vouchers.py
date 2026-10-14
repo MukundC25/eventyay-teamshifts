@@ -16,12 +16,11 @@ from ..models import (
     EmailTemplateRoles,
     MemberVoucher,
     TeamMemberApplication,
-    TeamShiftsEmailQueue,
-    TeamShiftsEmailQueueRecipient,
     VolunteerVoucherSettings,
     VoucherStatus,
 )
 from ..tasks import MarkdownBreakString
+from .email import record_sent_email
 
 logger = logging.getLogger(__name__)
 
@@ -171,20 +170,5 @@ def _send_voucher_email(event, user, voucher, template, locale) -> bool:
         logger.exception("[TeamShifts] Failed to send voucher email to %s", user.email)
         return False
 
-    with scope(event=event):
-        sent_now = now()
-        queue = TeamShiftsEmailQueue.objects.create(
-            event=event,
-            user=user,
-            subject=template.subject,
-            message=template.body,
-            locale=locale or "",
-            sent_at=sent_now,
-        )
-        TeamShiftsEmailQueueRecipient.objects.create(
-            queue=queue,
-            user=user,
-            email=user.email,
-            sent_at=sent_now,
-        )
+    record_sent_email(event, user, template.subject, template.body, context, locale, EmailTemplateRoles.VOUCHER_SENT)
     return True
