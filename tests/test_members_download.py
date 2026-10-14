@@ -116,7 +116,7 @@ def test_exporter_filename_uses_event_slug_and_date(event):
 def test_download_xlsx_contains_members_and_answers(client, event, cfm, orga_user, django_user_model):
     with scope(event=event):
         role = TeamRole.objects.create(event=event, name="Volunteer")
-        tshirt = TeamApplicationQuestion.objects.create(event=event, question="T-shirt", variant=QuestionVariant.MULTIPLE, options="S\nM", active=False)
+        tshirt = TeamApplicationQuestion.objects.create(event=event, question="T-shirt", variant=QuestionVariant.MULTIPLE, options="S\nM")
         agree = TeamApplicationQuestion.objects.create(event=event, question="Agree", variant=QuestionVariant.BOOLEAN)
         member = _member(event, django_user_model, "a@example.com", "Alice", phone="123", arrived=True, added_by_organizer=True)
         _member(event, django_user_model, "b@example.com", "Bob")
@@ -226,21 +226,43 @@ def test_members_page_ignores_invalid_role_filter(client, event, cfm, orga_user,
 
 
 @pytest.mark.django_db
-def test_deleted_question_keeps_column_and_answers(client, event, cfm, orga_user, django_user_model):
+def test_deleted_question_is_removed_from_export_and_answers_are_deleted(client, event, cfm, orga_user, django_user_model):
     with scope(event=event):
         question = TeamApplicationQuestion.objects.create(event=event, question="Diet", variant=QuestionVariant.STRING)
         answered = _member(event, django_user_model, "a@example.com", "Alice")
-        _member(event, django_user_model, "b@example.com", "Bob")
         TeamApplicationAnswer.objects.create(application=answered, question=question, answer="Vegan")
     client.force_login(orga_user)
     delete_url = reverse("plugins:teamshifts:question_delete", kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": question.pk})
     assert client.post(delete_url).status_code == 302
     with scope(event=event):
         assert not TeamApplicationQuestion.objects.filter(pk=question.pk).exists()
+        assert not TeamApplicationAnswer.objects.filter(application=answered).exists()
 
     rows = _rows(client.get(_url(event), {"_format": "xlsx"}))
-    assert rows[0][-1] == "Diet"
-    alice = next(row for row in rows[1:] if row[1] == "a@example.com")
-    bob = next(row for row in rows[1:] if row[1] == "b@example.com")
-    assert alice[-1] == "Vegan"
-    assert bob[-1] is None
+    assert "Diet" not in rows[0]
+    assert all("Vegan" not in row for row in rows)
+
+
+@pytest.mark.django_db
+def test_inactive_question_is_not_exported(client, event, cfm, orga_user, django_user_model):
+    with scope(event=event):
+        question = TeamApplicationQuestion.objects.create(event=event, question="Diet", variant=QuestionVariant.STRING, active=False)
+        answered = _member(event, django_user_model, "a@example.com", "Alice")
+        TeamApplicationAnswer.objects.create(application=answered, question=question, answer="Vegan")
+    client.force_login(orga_user)
+    rows = _rows(client.get(_url(event), {"_format": "xlsx"}))
+    assert "Diet" not in rows[0]
+    assert all("Vegan" not in row for row in rows)
+    with scope(event=event):
+        assert TeamApplicationAnswer.objects.filter(application=answered, question=question).exists()
+
+
+@pytest.mark.django_db
+def test_question_delete_page_warns_answers_are_permanently_deleted(client, event, cfm, orga_user):
+    with scope(event=event):
+        question = TeamApplicationQuestion.objects.create(event=event, question="Diet", variant=QuestionVariant.STRING)
+    client.force_login(orga_user)
+    delete_url = reverse("plugins:teamshifts:question_delete", kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": question.pk})
+    body = client.get(delete_url).content.decode()
+    assert "Answers are permanently deleted." in body
+    assert "Deactivate the question instead to stop asking it while keeping its answers." in body

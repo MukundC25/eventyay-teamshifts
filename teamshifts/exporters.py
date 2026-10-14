@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import NamedTuple
 
 from django.utils.translation import gettext as _, gettext_lazy
 from django_scopes import scope
 from eventyay.base.exporter import ListExporter
 
 from .forms import render_answer_for_review
-from .models import ArchivedApplicationAnswer, CallForTeamMembers, QuestionVariant, TeamApplicationAnswer, TeamApplicationQuestion
+from .models import CallForTeamMembers, QuestionVariant, TeamApplicationAnswer, TeamApplicationQuestion
 
 EXPORT_FORMAT_XLSX = "xlsx"
 EXPORT_FORMAT_CSV = "default"
@@ -16,38 +15,25 @@ DATETIME_ANSWER_FORMAT = "%Y-%m-%d %H:%M"
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
-class ArchivedQuestion(NamedTuple):
-    pk: int
-    question: str
-    variant: str
-
-
-def get_export_questions(event) -> list[TeamApplicationQuestion | ArchivedQuestion]:
-    """Return every question of the event, including inactive and deleted ones, so stored answers are never dropped."""
+def get_export_questions(event) -> list[TeamApplicationQuestion]:
     with scope(event=event):
-        questions = list(TeamApplicationQuestion.objects.filter(event=event))
+        questions = list(TeamApplicationQuestion.objects.filter(event=event, active=True))
         try:
             field_order = event.call_for_team_members.field_order
         except CallForTeamMembers.DoesNotExist:
             field_order = []
-        archived = {}
-        archived_rows = ArchivedApplicationAnswer.objects.filter(event=event).order_by("pk").values_list("question_id", "question_text", "variant")
-        for question_id, question_text, variant in archived_rows:
-            archived[question_id] = ArchivedQuestion(question_id, question_text, variant)
     positions = {item: index for index, item in enumerate(field_order) if isinstance(item, int)}
     fallback = len(positions)
-    live = sorted(questions, key=lambda question: (positions.get(question.pk, fallback), question.pk))
-    return [*live, *sorted(archived.values(), key=lambda question: question.pk)]
+    return sorted(questions, key=lambda question: (positions.get(question.pk, fallback), question.pk))
 
 
 def get_answer_map(event, member_ids) -> dict[tuple[int, int], str]:
     with scope(event=event):
-        live = TeamApplicationAnswer.objects.filter(application_id__in=member_ids).values_list("application_id", "question_id", "answer")
-        archived = ArchivedApplicationAnswer.objects.filter(application_id__in=member_ids).values_list("application_id", "question_id", "answer")
-        return {(application_id, question_id): answer for application_id, question_id, answer in [*archived, *live]}
+        rows = TeamApplicationAnswer.objects.filter(application_id__in=member_ids).values_list("application_id", "question_id", "answer")
+        return {(application_id, question_id): answer for application_id, question_id, answer in rows}
 
 
-def format_answer(question: TeamApplicationQuestion | ArchivedQuestion, answer_text: str, tz) -> str:
+def format_answer(question: TeamApplicationQuestion, answer_text: str, tz) -> str:
     if not answer_text:
         return ""
     if question.variant == QuestionVariant.DATETIME:
