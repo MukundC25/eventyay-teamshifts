@@ -140,6 +140,16 @@ def test_signup_after_reminder_was_sent_gets_no_second_reminder(event, cfm, acce
 
 
 @pytest.mark.django_db
+def test_unexpected_error_releases_claim_without_aborting(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START)
+
+    with patch(MAIL_PATH, side_effect=ValueError("bad template")):
+        assert send_due_shift_reminders(REMINDER_DUE_AT) == 0
+    with scope(event=event):
+        assert not ShiftReminder.objects.filter(event=event).exists()
+
+
+@pytest.mark.django_db
 def test_failed_send_is_retried_on_next_run(event, cfm, accepted, assign):
     assign(FIRST_SHIFT_START)
 

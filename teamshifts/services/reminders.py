@@ -9,7 +9,7 @@ from django.utils.translation import gettext
 from django_scopes import scope, scopes_disabled
 from eventyay.base.email import get_email_context
 from eventyay.base.i18n import language
-from eventyay.base.services.mail import SendMailException, mail
+from eventyay.base.services.mail import mail
 from i18nfield.strings import LazyI18nString
 
 from ..models import EmailTemplateRoles, ShiftAssignment, ShiftReminder
@@ -140,7 +140,7 @@ def send_due_shift_reminders(current=None) -> int:
 
         try:
             _send_reminder(event, user, assignments, template)
-        except SendMailException:
+        except Exception:
             _release_reminder(reminder)
             logger.exception("[TeamShifts] Failed to send shift reminder to %s for %s", user.email, day)
             continue
