@@ -49,6 +49,7 @@ from .forms import (
     TeamRoleForm,
     VoucherSettingsForm,
     render_answer_for_review,
+    valid_user_pk,
     volunteer_choice_label,
 )
 from .models import (
@@ -1126,8 +1127,10 @@ class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
         if request.POST.get("action") == "preview":
             event = request.event
             status = request.POST.get("status") or ""
-            volunteer_ids = [int(v) for v in request.POST.getlist("individual_volunteers") if v.isascii() and v.isdigit()]
-            recipients = get_recipients(event, status=status, user_ids=volunteer_ids)
+            posted_volunteers = request.POST.getlist("individual_volunteers")
+            volunteer_ids = [pk for pk in map(valid_user_pk, posted_volunteers) if pk is not None]
+            # An unusable explicit selection must never fall back to the (broader) status filter.
+            recipients = get_recipients(event, status=status, user_ids=volunteer_ids) if volunteer_ids or not posted_volunteers else []
             self._preview_recipients = recipients
             locales = list(event.settings.get("locales") or [event.settings.locale])
             subject_i18n = LazyI18nString({locales[i]: request.POST.get(f"subject_{i}", "") for i in range(len(locales))})
@@ -1243,10 +1246,12 @@ class ComposeVolunteersSelect2View(PluginActiveMixin, TeamShiftsPermissionRequir
 
             total = applications.count()
             offset = (page - 1) * self.page_size
-            results = [
-                {"id": application.user_id, "text": volunteer_choice_label(application.user, show_email)}
-                for application in applications[offset : offset + self.page_size]
-            ]
+            results = []
+            if offset < total:
+                results = [
+                    {"id": application.user_id, "text": volunteer_choice_label(application.user, show_email)}
+                    for application in applications[offset : offset + self.page_size]
+                ]
         return JsonResponse({"results": results, "pagination": {"more": total > offset + self.page_size}})
 
 
