@@ -87,7 +87,7 @@ from .services.certificates import maybe_auto_issue_certificate
 from .services.checkin import evaluate_shift_certificate, stamp_shift_end
 from .services.email import get_recipients, queue_email, queue_lifecycle_email, queue_shift_notification_email, queue_shift_summary_email
 from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer
-from .services.shift_summary import build_shift_summary_sample
+from .services.shift_summary import build_shift_summary_sample, my_shifts_url
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
@@ -514,7 +514,7 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "event_dates": event.get_date_range_display(),
                 "event_location": str(event.location) if event.location else "",
                 "shift_schedule_url": build_absolute_uri(event, "plugins:teamshifts:public_shift_schedule"),
-                "my_shifts_url": build_absolute_uri(event, "plugins:teamshifts:my_shifts"),
+                "my_shifts_url": my_shifts_url(),
                 "shift_summary": build_shift_summary_sample(event),
                 "shift_name": "Morning Shift (2026-01-15 09:00 – 12:00)",
                 "shift_time": "2026-01-15 09:00 – 12:00",

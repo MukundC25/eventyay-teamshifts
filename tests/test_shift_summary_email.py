@@ -182,7 +182,20 @@ def test_published_summary_is_sent_with_current_shifts(event, cfm, volunteer, ro
     with patch("teamshifts.tasks.mail") as mock_mail:
         send_queued_email.run(event_id=event.pk, queue_id=queue.pk)
     mock_mail.assert_called_once()
-    assert "Setup" in mock_mail.call_args.kwargs["context"]["shift_summary"]
+    context = mock_mail.call_args.kwargs["context"]
+    assert "Setup" in context["shift_summary"]
+    assert context["my_shifts_url"].endswith("/common/my-shifts/")
+
+    with scope(event=event):
+        ShiftAssignment.objects.all().delete()
+    queue = queue_shift_summary_email(event, volunteer)
+    with scope(event=event):
+        TeamShiftsEmailQueue.objects.filter(pk=queue.pk).update(send_after=now() - datetime.timedelta(minutes=1))
+    with patch("teamshifts.tasks.mail") as mock_mail:
+        send_queued_email.run(event_id=event.pk, queue_id=queue.pk)
+    context = mock_mail.call_args.kwargs["context"]
+    assert "no shifts" in context["shift_summary"]
+    assert context["my_shifts_url"] == context["shift_schedule_url"]
 
 
 @pytest.mark.django_db
