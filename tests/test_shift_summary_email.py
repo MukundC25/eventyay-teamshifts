@@ -65,20 +65,20 @@ def test_first_change_queues_summary_for_next_send_time(event, cfm, volunteer):
     queue_shift_summary_email(event, volunteer)
     (queue,) = _summary_queues(event)
     assert queue.send_after.astimezone(event.tz).time() == SHIFT_SUMMARY_SEND_TIME
-    assert now() < queue.send_after <= now() + datetime.timedelta(hours=28, minutes=1)
+    assert now() < queue.send_after <= now() + datetime.timedelta(hours=24, minutes=1)
 
 
-def test_send_time_is_next_morning_after_the_change_day(event):
+def test_send_time_is_that_evening_or_the_next_one_after_the_cutoff(event):
     tz = event.tz
 
     def at(day, hour, minute=0):
         return datetime.datetime(2026, 3, day, hour, minute, tzinfo=tz)
 
-    assert next_shift_summary_time(event, at(10, 9, 30)) == at(11, 8)
-    assert next_shift_summary_time(event, at(10, 23, 30)) == at(11, 8)
-    assert next_shift_summary_time(event, at(11, 2, 0)) == at(11, 8)
-    assert next_shift_summary_time(event, at(11, 3, 59)) == at(11, 8)
-    assert next_shift_summary_time(event, at(11, 4, 0)) == at(12, 8)
+    assert next_shift_summary_time(event, at(10, 0, 30)) == at(10, 20)
+    assert next_shift_summary_time(event, at(10, 9, 30)) == at(10, 20)
+    assert next_shift_summary_time(event, at(10, 19, 59)) == at(10, 20)
+    assert next_shift_summary_time(event, at(10, 20, 0)) == at(11, 20)
+    assert next_shift_summary_time(event, at(10, 23, 30)) == at(11, 20)
 
 
 @pytest.mark.django_db
