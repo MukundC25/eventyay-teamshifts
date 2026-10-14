@@ -89,8 +89,11 @@ def test_summaries_are_grouped_per_volunteer_per_day(event, cfm, volunteer, djan
     assert second.send_after == first.send_after
 
     other = django_user_model.objects.create_user(email="o@example.com", password="x", fullname="O", locale="en")
-    queue_shift_summary_email(event, other)
+    other_queue = queue_shift_summary_email(event, other)
     assert len(_summary_queues(event)) == 2
+    with scope(event=event):
+        assert [r.user_id for r in first.recipients.all()] == [volunteer.pk]
+        assert [r.user_id for r in other_queue.recipients.all()] == [other.pk]
 
     with scope(event=event):
         TeamShiftsEmailQueue.objects.filter(pk=first.pk).update(sent_at=now())
