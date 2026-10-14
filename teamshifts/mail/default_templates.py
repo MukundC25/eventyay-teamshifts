@@ -160,7 +160,7 @@ SHIFT_SUMMARY_SUBJECT = LazyI18nString.from_gettext(_("Your shifts for {event_na
 SHIFT_SUMMARY_TEXT = LazyI18nString.from_gettext(
     _(
         "Hi {full_name},\n\n"
-        "Your shifts for {event_name} changed today. Here is a summary of all your current shifts:\n\n"
+        "Your shifts for {event_name} changed. Here is a summary of all your current shifts:\n\n"
         "{shift_summary}\n\n"
         "You can view all your shifts here:\n"
         "{my_shifts_url}\n\n"

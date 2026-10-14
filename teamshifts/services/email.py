@@ -21,7 +21,8 @@ from ..tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
 
-SHIFT_SUMMARY_SEND_TIME = time(20, 0)
+SHIFT_SUMMARY_SEND_TIME = time(8, 0)
+SHIFT_SUMMARY_DAY_START = time(4, 0)
 
 
 def get_recipients(
@@ -165,10 +166,9 @@ def queue_shift_notification_email(
 
 def next_shift_summary_time(event: Event, current: datetime) -> datetime:
     local = current.astimezone(event.tz)
-    target = datetime.combine(local.date(), SHIFT_SUMMARY_SEND_TIME, tzinfo=event.tz)
-    if target <= local:
-        target = datetime.combine(local.date() + timedelta(days=1), SHIFT_SUMMARY_SEND_TIME, tzinfo=event.tz)
-    return target
+    day_start = timedelta(hours=SHIFT_SUMMARY_DAY_START.hour, minutes=SHIFT_SUMMARY_DAY_START.minute)
+    change_day = (local - day_start).date()
+    return datetime.combine(change_day + timedelta(days=1), SHIFT_SUMMARY_SEND_TIME, tzinfo=event.tz)
 
 
 def queue_shift_summary_email(event: Event, user: User) -> TeamShiftsEmailQueue | None:
@@ -189,6 +189,8 @@ def queue_shift_summary_email(event: Event, user: User) -> TeamShiftsEmailQueue 
 
     current = now()
     with scope(event=event), transaction.atomic():
+        # Serialize concurrent changes for one volunteer: there is no pending row to lock yet.
+        User.objects.select_for_update().get(pk=user.pk)
         pending = (
             TeamShiftsEmailQueue.objects.select_for_update()
             .filter(
