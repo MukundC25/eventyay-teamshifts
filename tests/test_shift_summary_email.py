@@ -102,6 +102,18 @@ def test_summaries_are_grouped_per_volunteer_per_day(event, cfm, volunteer, djan
 
 
 @pytest.mark.django_db
+def test_overdue_unsent_summary_is_reused_until_the_sender_claims_it(event, cfm, volunteer):
+    first = queue_shift_summary_email(event, volunteer)
+    with scope(event=event):
+        TeamShiftsEmailQueue.objects.filter(pk=first.pk).update(send_after=now() - datetime.timedelta(hours=1))
+    assert queue_shift_summary_email(event, volunteer).pk == first.pk
+
+    with scope(event=event):
+        first.recipients.update(sent_at=now())
+    assert queue_shift_summary_email(event, volunteer).pk != first.pk
+
+
+@pytest.mark.django_db
 def test_nothing_is_sent_while_schedule_is_unpublished(event, cfm, volunteer):
     with scope(event=event):
         CallForTeamMembers.objects.filter(pk=cfm.pk).update(shift_schedule_published=False)
