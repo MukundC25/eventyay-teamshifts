@@ -65,7 +65,7 @@
         </button>
       {% endif %}
       {% if can_add_member %}
-        <button type='button' class='btn btn-default' id='bulk-send-certificates-btn'>
+        <button type='button' class='btn btn-primary' id='bulk-send-certificates-btn'>
           <i class='fa fa-certificate'></i> {% trans 'Send certificates' %}
         </button>
         <a href='{% url "plugins:teamshifts:member_add" organizer=request.organizer.slug event=request.event.slug %}' class='btn btn-primary'>

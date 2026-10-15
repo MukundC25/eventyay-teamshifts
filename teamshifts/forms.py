@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from django import forms
 from django.utils import timezone
-from django.utils.html import escape as html_escape
+from django.utils.html import escape as html_escape, format_html
 from django.utils.translation import gettext_lazy as _
 from django_countries import countries
 from django_scopes import scopes_disabled
@@ -836,6 +836,13 @@ class CertificateSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        after_event_end = self.fields["require_after_event_end"]
+        after_event_end.label = format_html(
+            '{} <span class="fa fa-info-circle text-muted" data-toggle="tooltip" title="{}"></span>',
+            after_event_end.label,
+            after_event_end.help_text,
+        )
+        after_event_end.help_text = ""
         if self.instance and self.instance.pk:
             self.fields["generate_automatically"].initial = self.instance.trigger == CertificateTrigger.AUTO
 
