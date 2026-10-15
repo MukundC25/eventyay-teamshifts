@@ -805,8 +805,9 @@ class CertificateSettingsForm(forms.ModelForm):
         required=False,
         label=_("Generate automatically"),
         help_text=_(
-            "When enabled, a certificate is generated as soon as a member meets the conditions, for example "
-            "after they are marked arrived. When disabled, an organizer generates certificates manually."
+            "When enabled, a certificate is generated and emailed to a member as soon as they meet the conditions, "
+            "for example right after they are marked arrived. When disabled (default), certificates are only "
+            "generated when an organizer clicks Generate all."
         ),
     )
 
@@ -817,12 +818,20 @@ class CertificateSettingsForm(forms.ModelForm):
             "require_min_shifts",
             "min_shifts",
             "match_mode",
+            "require_after_event_end",
         )
         widgets = {
             "require_arrived": forms.CheckboxInput(),
             "require_min_shifts": forms.CheckboxInput(),
             "min_shifts": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
             "match_mode": forms.RadioSelect(choices=CertificateMatchMode.choices),
+            "require_after_event_end": forms.CheckboxInput(),
+        }
+        help_texts = {
+            "require_after_event_end": _(
+                "No certificates are generated until the last day of the event has ended in the event timezone. "
+                "With automatic generation, they are then generated and emailed to everyone who qualifies."
+            ),
         }
 
     def __init__(self, *args, **kwargs):
