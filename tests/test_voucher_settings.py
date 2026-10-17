@@ -251,6 +251,7 @@ def test_members_voucher_sent_date(orga_client, event, user, status, sent_at, ex
     with scopes_disabled():
         application = TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
         MemberVoucher.objects.create(
+            event=event,
             application=application,
             voucher=voucher,
             status=status,
@@ -282,6 +283,7 @@ def test_members_voucher_sent_date_updates_after_resending(orga_client, event, u
         CallForTeamMembers.objects.create(event=event, active=True)
         application = TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
         MemberVoucher.objects.create(
+            event=event,
             application=application,
             voucher=voucher,
             status=VoucherStatus.SENT,
@@ -321,6 +323,7 @@ def test_members_voucher_sent_date_uses_event_local_year(orga_client, event, use
     with scopes_disabled():
         application = TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
         MemberVoucher.objects.create(
+            event=event,
             application=application,
             voucher=voucher,
             status=VoucherStatus.SENT,
