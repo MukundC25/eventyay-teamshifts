@@ -45,7 +45,7 @@
         <tr>
           <td>
             <a href='{% url "plugins:teamshifts:email_edit" organizer=request.organizer.slug event=request.event.slug pk=mail.queue_id %}'>
-              {{ mail.display_subject }}
+              {% if mail.display_subject %}{{ mail.display_subject }}{% else %}<span class='text-muted'>{% trans "(No subject)" %}</span>{% endif %}
             </a>
           </td>
           <td>

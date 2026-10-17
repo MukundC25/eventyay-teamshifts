@@ -177,6 +177,6 @@ def _send_voucher_email(event, user, voucher, template, locale) -> bool:
         logger.exception("[TeamShifts] Failed to send voucher email to %s", user.email)
         return False
 
-    listing_context = {key: value for key, value in context.items() if key not in VOUCHER_CREDENTIAL_CONTEXT_KEYS}
+    listing_context = {key: "[redacted]" if key in VOUCHER_CREDENTIAL_CONTEXT_KEYS else value for key, value in context.items()}
     record_sent_email(event, user, template.subject, template.body, listing_context, locale, EmailTemplateRoles.VOUCHER_SENT)
     return True

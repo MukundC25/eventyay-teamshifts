@@ -254,4 +254,15 @@ def test_voucher_credentials_are_not_stored_in_listed_subject(event, volunteer):
     with scope(event=event):
         stored = TeamShiftsEmailQueueRecipient.objects.get(email=volunteer.email).subject
     assert "SECRETCODE" not in stored
+    assert "[redacted]" in stored
     assert str(event.name) in stored
+
+
+@pytest.mark.django_db
+def test_sent_list_shows_placeholder_for_blank_subject(client, event, cfm, organizer_user, volunteer):
+    _create_sent(event, volunteer, "", author=organizer_user)
+    client.force_login(organizer_user)
+
+    response = client.get(_sent_url(event))
+
+    assert "(No subject)" in response.content.decode()
