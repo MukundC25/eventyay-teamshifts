@@ -51,6 +51,7 @@ def queue_email(
     shift: Shift | None = None,
     shift_role: TeamRole | None = None,
     status_filter: str = "",
+    individual_recipients: bool = False,
     send_after=None,
     dispatch: bool = True,
 ) -> TeamShiftsEmailQueue:
@@ -67,6 +68,7 @@ def queue_email(
             shift=shift,
             shift_role=shift_role,
             status_filter=status_filter or "",
+            individual_recipients=individual_recipients,
             send_after=send_after,
         )
         seen: set[str] = set()

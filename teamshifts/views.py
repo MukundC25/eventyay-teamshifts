@@ -1120,7 +1120,7 @@ class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
                     return initial
             initial["subject"] = source.subject
             initial["message"] = source.message
-            initial["status"] = source.status_filter or ""
+            initial["status"] = ApplicationStatus.ACCEPTED if source.individual_recipients else source.status_filter or ""
         return initial
 
     def get_context_data(self, **kwargs):
@@ -1183,6 +1183,7 @@ class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
             recipients=recipients,
             user=self.request.user,
             status_filter=status,
+            individual_recipients=bool(volunteer_ids),
             send_after=send_after,
             dispatch=(action != "draft"),
         )

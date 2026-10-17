@@ -2,12 +2,13 @@ from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
+from django.utils.timezone import now
 from django_scopes import scope
 from eventyay.base.models import Event, Organizer, Team, User
 
 from teamshifts.forms import EmailComposeForm, valid_user_pk, volunteer_choice_label
 from teamshifts.models import ApplicationStatus, TeamMemberApplication, TeamShiftsEmailQueue
-from teamshifts.services.email import get_recipients
+from teamshifts.services.email import get_recipients, queue_email
 
 
 def _volunteer(event, email, status, fullname=""):
@@ -205,6 +206,7 @@ def test_compose_sends_only_to_the_chosen_volunteers_and_ignores_the_status(coor
     (queue,) = _queued(event)
     assert {r.email for r in queue.recipients.all()} == {"chloe@example.com", "ben@example.com"}
     assert queue.status_filter == ""
+    assert queue.individual_recipients is True
 
 
 @pytest.mark.django_db
@@ -215,6 +217,7 @@ def test_compose_without_volunteers_still_uses_the_status_filter(coordinator_cli
     (queue,) = _queued(event)
     assert {r.email for r in queue.recipients.all()} == {"alice@example.com"}
     assert queue.status_filter == ApplicationStatus.ACCEPTED
+    assert queue.individual_recipients is False
 
 
 @pytest.mark.django_db
@@ -358,3 +361,57 @@ def test_organizer_added_members_can_be_picked_like_any_other_volunteer(coordina
     assert {r.email for r in queue.recipients.all()} == {"added@example.com"}
     # They already receive status-filtered sends, so picking them individually must work too.
     assert added.pk in {u.pk for u in get_recipients(event, status=ApplicationStatus.ACCEPTED)}
+
+
+def _copy_page(client, event, queue):
+    return client.get(_compose_url(event) + f"?copy={queue.pk}").content.decode()
+
+
+@pytest.mark.django_db
+def test_copying_an_email_sent_to_specific_volunteers_opens_on_accepted(coordinator_client, event, user, accepted):
+    sent = queue_email(event, "Hello", "<p>Body</p>", [accepted], user=user, individual_recipients=True, dispatch=False)
+
+    html = _copy_page(coordinator_client, event, sent)
+
+    assert '<option value="accepted" selected>' in html
+    assert '<option value="" selected>' not in html
+    assert "Hello" in html
+    assert f'<option value="{accepted.pk}" selected>' not in html
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [ApplicationStatus.PENDING, ApplicationStatus.REJECTED, ""])
+def test_copying_other_emails_keeps_their_status_filter(coordinator_client, event, user, accepted, status):
+    sent = queue_email(event, "Hello", "<p>Body</p>", [accepted], user=user, status_filter=status, dispatch=False)
+
+    html = _copy_page(coordinator_client, event, sent)
+
+    assert f'<option value="{status}" selected>' in html
+
+
+@pytest.mark.django_db
+def test_lists_label_emails_sent_to_specific_volunteers(coordinator_client, event, user, accepted):
+    queue_email(event, "Picked mail", "<p>m</p>", [accepted], user=user, individual_recipients=True, dispatch=False)
+    queue_email(event, "Filtered mail", "<p>m</p>", [accepted], user=user, status_filter=ApplicationStatus.ACCEPTED, dispatch=False)
+    with scope(event=event):
+        TeamShiftsEmailQueue.objects.filter(event=event).update(sent_at=now())
+
+    html = coordinator_client.get(reverse("plugins:teamshifts:email_sent", kwargs={"organizer": event.organizer.slug, "event": event.slug})).content.decode()
+    row_picked = html[html.index("Picked mail") :].split("</tr>")[0]
+    row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
+    assert "Specific volunteers" in row_picked
+    assert "Specific volunteers" not in row_filtered
+    assert "Accepted" in row_filtered
+
+
+@pytest.mark.django_db
+def test_outbox_labels_emails_sent_to_specific_volunteers(coordinator_client, event, user, accepted):
+    queue_email(event, "Picked mail", "<p>m</p>", [accepted], user=user, individual_recipients=True, dispatch=False)
+    queue_email(event, "Filtered mail", "<p>m</p>", [accepted], user=user, status_filter=ApplicationStatus.ACCEPTED, dispatch=False)
+
+    html = coordinator_client.get(reverse("plugins:teamshifts:email_outbox", kwargs={"organizer": event.organizer.slug, "event": event.slug})).content.decode()
+
+    row_picked = html[html.index("Picked mail") :].split("</tr>")[0]
+    row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
+    assert "Specific volunteers" in row_picked
+    assert "Specific volunteers" not in row_filtered
