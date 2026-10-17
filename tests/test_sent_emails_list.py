@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from django.urls import reverse
 from django.utils.timezone import now
@@ -12,6 +14,8 @@ from teamshifts.models import (
     TeamShiftsEmailQueueRecipient,
 )
 from teamshifts.services.email import queue_email, record_sent_email
+from teamshifts.services.vouchers import _send_voucher_email
+from teamshifts.tasks import render_subject
 
 
 @pytest.fixture(autouse=True)
@@ -207,3 +211,47 @@ def test_sent_list_hides_email_from_lead_with_hidden_emails(client, event, cfm, 
     assert "Vera Volunteer" in listed.content.decode()
     assert volunteer.email not in listed.content.decode()
     assert "Vera Volunteer" not in searched.content.decode()
+
+
+@pytest.mark.django_db
+def test_render_subject_applies_event_mail_prefix(event):
+    event.settings.mail_prefix = "[Summit]"
+
+    assert render_subject("Hello {name}", {"name": "Vera"}, "en", event) == "[Summit] Hello Vera"
+    assert render_subject("Hello {name}", {"name": "Vera"}, "en") == "Hello Vera"
+
+
+@pytest.mark.django_db
+def test_sent_list_includes_recipients_of_partially_sent_queue(client, event, cfm, organizer_user, volunteer):
+    other = User.objects.create_user(email="other@example.com", password="x", fullname="Otto Other")
+    queue = _create_sent(event, volunteer, "Partial", author=organizer_user)
+    with scope(event=event):
+        TeamShiftsEmailQueue.objects.filter(pk=queue.pk).update(sent_at=None)
+        TeamShiftsEmailQueueRecipient.objects.create(queue=queue, user=other, email=other.email, error="boom")
+    client.force_login(organizer_user)
+
+    content = client.get(_sent_url(event)).content.decode()
+
+    assert "Vera Volunteer" in content
+    assert "Otto Other" not in content
+
+
+@pytest.mark.django_db
+def test_voucher_credentials_are_not_stored_in_listed_subject(event, volunteer):
+    voucher = type("FakeVoucher", (), {"code": "SECRETCODE"})()
+    template = type(
+        "FakeTemplate",
+        (),
+        {
+            "subject": LazyI18nString({"en": "Voucher {voucher_code} for {event_name}"}),
+            "body": LazyI18nString({"en": "Body {ticket_claim_url}"}),
+        },
+    )()
+
+    with patch("teamshifts.services.vouchers.mail"), patch("teamshifts.services.vouchers.build_absolute_uri", return_value="https://x.test/redeem"):
+        assert _send_voucher_email(event, volunteer, voucher, template, "en")
+
+    with scope(event=event):
+        stored = TeamShiftsEmailQueueRecipient.objects.get(email=volunteer.email).subject
+    assert "SECRETCODE" not in stored
+    assert str(event.name) in stored

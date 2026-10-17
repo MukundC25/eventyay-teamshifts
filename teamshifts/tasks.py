@@ -35,9 +35,13 @@ class MarkdownBreakString(LazyI18nString):
         return _ensure_markdown_breaks(super().__str__())
 
 
-def render_subject(subject, context, locale) -> str:
+def render_subject(subject, context, locale, event=None) -> str:
     with language(locale):
-        return str(subject).format_map(TolerantDict(_stringify_mail_context(context)))
+        rendered = str(subject).format_map(TolerantDict(_stringify_mail_context(context)))
+        prefix = event.settings.get("mail_prefix") if event else None
+        if prefix and prefix.startswith("[") and prefix.endswith("]"):
+            prefix = prefix[1:-1]
+        return f"[{prefix}] {rendered}" if prefix else rendered
 
 
 SCHEDULED_EMAIL_BATCH_SIZE = 50
@@ -150,7 +154,7 @@ def send_queued_email(self, event_id: int, queue_id: int):
                         sync_send=True,
                     )
                     recipient.error = ""
-                    recipient.subject = render_subject(subject, context, locale)
+                    recipient.subject = render_subject(subject, context, locale, event)
                     recipient.save(update_fields=["error", "subject"])
                 except SendMailException as exc:
                     recipient.sent_at = None

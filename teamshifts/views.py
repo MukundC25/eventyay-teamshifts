@@ -1250,7 +1250,7 @@ class EmailSentView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Pagina
         event = self.request.event
         with scope(event=event):
             qs = (
-                TeamShiftsEmailQueueRecipient.objects.filter(queue__event=event, queue__sent_at__isnull=False, sent_at__isnull=False)
+                TeamShiftsEmailQueueRecipient.objects.filter(queue__event=event, sent_at__isnull=False)
                 .filter(Q(queue__user__isnull=False) | ~Q(queue__mail_type=""))
                 .select_related("queue", "user")
                 .order_by("-sent_at", "-pk")

@@ -107,7 +107,7 @@ def record_sent_email(
             queue=queue,
             user=user,
             email=user.email,
-            subject=render_subject(subject, context, locale or event.settings.locale),
+            subject=render_subject(subject, context, locale or event.settings.locale, event),
             sent_at=sent_now,
         )
     return queue
