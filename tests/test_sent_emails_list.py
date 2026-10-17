@@ -243,7 +243,7 @@ def test_voucher_credentials_are_not_stored_in_listed_subject(event, volunteer):
         "FakeTemplate",
         (),
         {
-            "subject": LazyI18nString({"en": "Voucher {voucher_code} for {event_name}"}),
+            "subject": LazyI18nString({"en": "Voucher {voucher_code} {ticket_claim_url} for {event_name}"}),
             "body": LazyI18nString({"en": "Body {ticket_claim_url}"}),
         },
     )()
@@ -255,6 +255,8 @@ def test_voucher_credentials_are_not_stored_in_listed_subject(event, volunteer):
         stored = TeamShiftsEmailQueueRecipient.objects.get(email=volunteer.email).subject
     assert "SECRETCODE" not in stored
     assert "[redacted]" in stored
+    assert "https://x.test/redeem" not in stored
+    assert stored.count("[redacted]") == 2
     assert str(event.name) in stored
 
 
