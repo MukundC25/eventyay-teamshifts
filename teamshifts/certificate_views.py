@@ -7,6 +7,7 @@ from django.db.models import Count, Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.formats import date_format
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _, ngettext
 from django.views.generic import View
@@ -15,7 +16,7 @@ from eventyay.base.models import CachedFile
 from eventyay.control.views.pdf import BaseEditorView
 
 from .forms import CertificateSettingsForm
-from .models import ApplicationStatus, MemberCertificate, TeamMemberApplication
+from .models import ApplicationStatus, CertificateTrigger, MemberCertificate, TeamMemberApplication
 from .pdf import (
     CERTIFICATE_PLACEHOLDERS,
     default_layout,
@@ -29,6 +30,8 @@ from .pdf import (
 )
 from .permissions import TeamShiftsPermissionRequiredMixin, can_view_email_addresses
 from .services.certificates import (
+    event_has_ended,
+    event_last_day,
     generate_all_certificates,
     get_certificate_settings,
     member_qualifies,
@@ -116,10 +119,33 @@ class CertificateSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
         return {
             "form": form,
             "settings": settings,
+            "generates_automatically": settings.trigger == CertificateTrigger.AUTO,
+            "members_url": reverse("plugins:teamshifts:members", kwargs={"organizer": request.organizer.slug, "event": event.slug}),
+            "can_generate": any(row["qualifies"] for row in rows),
+            "generation_hint": self._generation_hint(event, settings, rows),
             "placeholders": CERTIFICATE_PLACEHOLDERS,
             "rows": rows,
             "can_view_email": can_view_email_addresses(request.user, request.organizer, event, request=request),
         }
+
+    def _generation_hint(self, event, settings, rows):
+        if settings.require_after_event_end and not event_has_ended(event):
+            last_day = date_format(event_last_day(event), "DATE_FORMAT")
+            if settings.trigger == CertificateTrigger.AUTO:
+                return _("Certificates will be generated and emailed automatically once the event has ended on %(date)s.") % {"date": last_day}
+            return _("Certificates can be generated once the event has ended on %(date)s.") % {"date": last_day}
+        if not any(row["qualifies"] for row in rows):
+            return _("No member meets the qualification conditions yet.")
+        pending = sum(1 for row in rows if row["qualifies"] and not row["generated"])
+        if pending:
+            return ngettext(
+                "%(count)d member qualifies but has no certificate yet. Click Generate all to generate and email it, "
+                "or send certificates to selected members from the Members page.",
+                "%(count)d members qualify but have no certificate yet. Click Generate all to generate and email them, "
+                "or send certificates to selected members from the Members page.",
+                pending,
+            ) % {"count": pending}
+        return None
 
 
 class CertificatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):

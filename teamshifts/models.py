@@ -1,6 +1,6 @@
 import secrets
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -350,6 +350,13 @@ class TeamMemberApplication(models.Model):
     def __str__(self):
         return f"{self.user.email} ({self.get_status_display()})"
 
+    @property
+    def certificate_status(self) -> "CertificateStatus":
+        try:
+            return self.certificate.status
+        except ObjectDoesNotExist:
+            return CertificateStatus.NOT_SENT
+
 
 class Shift(models.Model):
     event = models.ForeignKey(
@@ -697,6 +704,20 @@ class CertificateTrigger(models.TextChoices):
     MANUAL = "manual", _("Manually")
 
 
+class CertificateStatus(models.TextChoices):
+    NOT_SENT = "not_sent", _("Not sent")
+    SENT = "sent", _("Sent — not downloaded")
+    DOWNLOADED = "downloaded", _("Downloaded")
+
+    @property
+    def label_class(self) -> str:
+        return {
+            CertificateStatus.NOT_SENT: "label-default",
+            CertificateStatus.SENT: "label-info",
+            CertificateStatus.DOWNLOADED: "label-success",
+        }[self]
+
+
 def certificate_background_name(instance, filename: str) -> str:
     secret = get_random_string(16)
     return f"pub/{instance.event.organizer.slug}/{instance.event.slug}/teamshifts/certificates/bg-{instance.pk}-{secret}.pdf"
@@ -768,7 +789,7 @@ class MemberCertificate(models.Model):
         null=True,
         blank=True,
         verbose_name=_("Notified at"),
-        help_text=_("Timestamp of the first certificate email notification. Null means no notification has been sent yet."),
+        help_text=_("Timestamp of the latest certificate email notification. Null means no notification has been sent yet."),
     )
 
     objects = ScopedManager(event="application__event")
@@ -779,6 +800,14 @@ class MemberCertificate(models.Model):
 
     def __str__(self):
         return f"Certificate for {self.application}"
+
+    @property
+    def status(self) -> str:
+        if self.downloaded_at:
+            return CertificateStatus.DOWNLOADED
+        if self.notified_at:
+            return CertificateStatus.SENT
+        return CertificateStatus.NOT_SENT
 
 
 class VoucherStatus(models.TextChoices):

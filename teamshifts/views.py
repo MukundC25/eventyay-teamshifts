@@ -61,6 +61,7 @@ from .models import (
     CFM_LOCKED_FIELDS,
     ApplicationStatus,
     CallForTeamMembers,
+    CertificateStatus,
     EmailTemplateRoles,
     MemberVoucher,
     Shift,
@@ -1904,7 +1905,7 @@ class MembersQuerysetMixin:
     def get_queryset(self):
         event = self.request.event
         with scope(event=event):
-            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user")
+            qs = TeamMemberApplication.objects.filter(event=event, status=ApplicationStatus.ACCEPTED).select_related("user", "certificate")
 
             search = self.request.GET.get("q", "").strip()
             if search:
@@ -1922,6 +1923,10 @@ class MembersQuerysetMixin:
             voucher_status = self.request.GET.get("voucher", "")
             if voucher_status in VoucherStatus.values and self._vouchers_enabled(self._get_voucher_settings()):
                 qs = qs.filter(self._voucher_status_filter(voucher_status))
+
+            certificate_status = self.request.GET.get("certificate", "")
+            if certificate_status in CertificateStatus.values:
+                qs = qs.filter(self._certificate_status_filter(certificate_status))
 
             qs = (
                 qs.annotate(
@@ -1976,6 +1981,15 @@ class MembersQuerysetMixin:
             return Q(voucher_assignment__status=VoucherStatus.SENT) & ~claimed
         return (Q(voucher_assignment__isnull=True) | Q(voucher_assignment__status=VoucherStatus.NOT_SENT)) & ~claimed
 
+    @staticmethod
+    def _certificate_status_filter(certificate_status):
+        downloaded = Q(certificate__downloaded_at__isnull=False)
+        if certificate_status == CertificateStatus.DOWNLOADED:
+            return downloaded
+        if certificate_status == CertificateStatus.SENT:
+            return Q(certificate__notified_at__isnull=False) & ~downloaded
+        return (Q(certificate__isnull=True) | Q(certificate__notified_at__isnull=True)) & ~downloaded
+
     def _get_voucher_settings(self):
         try:
             return self.request.event.volunteer_voucher_settings
@@ -1998,6 +2012,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Memb
         with scope(event=event):
             ctx["roles"] = list(TeamRole.objects.filter(event=event))
         ctx["voucher_status_choices"] = VoucherStatus.choices
+        ctx["certificate_status_choices"] = CertificateStatus.choices
 
         ctx["can_view_email"] = can_view_email_addresses(self.request.user, self.request.organizer, self.request.event, request=self.request)
         ctx["can_add_member"] = has_teamshifts_permission(
@@ -2013,7 +2028,7 @@ class MembersListView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, Memb
                 "plugins:teamshifts:members_download",
                 kwargs={"organizer": self.request.organizer.slug, "event": self.request.event.slug},
             )
-            filters = {key: self.request.GET[key].strip() for key in ("q", "role", "voucher") if self.request.GET.get(key, "").strip()}
+            filters = {key: self.request.GET[key].strip() for key in ("q", "role", "voucher", "certificate") if self.request.GET.get(key, "").strip()}
             ctx["download_xlsx_url"] = f"{download_url}?{urlencode({**filters, '_format': EXPORT_FORMAT_XLSX})}"
             ctx["download_csv_url"] = f"{download_url}?{urlencode({**filters, '_format': EXPORT_FORMAT_CSV})}"
 
@@ -3459,6 +3474,15 @@ class BulkSendCertificatesView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                     result["no_email"],
                 )
                 % {"count": result["no_email"]}
+            )
+        if result["failed"]:
+            parts.append(
+                ngettext(
+                    "%(count)d could not be generated. Try again later.",
+                    "%(count)d could not be generated. Try again later.",
+                    result["failed"],
+                )
+                % {"count": result["failed"]}
             )
 
         summary = " ".join(str(part) for part in parts)

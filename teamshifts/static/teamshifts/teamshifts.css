@@ -100,6 +100,14 @@ label .optional {
     margin-bottom: 1em;
 }
 
+.teamshifts-list-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
 .teamshifts-download-dropdown {
     display: inline-block;
     vertical-align: top;
@@ -377,9 +385,10 @@ label .optional {
   align-items: flex-start;
 }
 
-/* Compact yellow box under the voucher buttons. The theme's alert-warning is white
+/* Compact yellow box under the voucher and certificate buttons. The theme's alert-warning is white
    with an orange bar, so Bootstrap 3's original warning colours are used instead. */
-.ts-send-vouchers-hint {
+.ts-send-vouchers-hint,
+.ts-certificate-hint {
   display: inline-block;
   margin: 10px 0 0;
   padding: 6px 12px;
@@ -393,6 +402,7 @@ label .optional {
 .ts-send-vouchers-hint[hidden] {
   display: none;
 }
-.ts-voucher-sent-date {
+.ts-voucher-sent-date,
+.ts-certificate-sent-date {
   display: block;
 }

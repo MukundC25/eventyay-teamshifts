@@ -1,6 +1,11 @@
 {% extends "teamshifts/base.html" %}
 {% load i18n %}
 {% load bootstrap3 %}
+{% load static %}
+{% block custom_header %}
+    {{ block.super }}
+    <script type="module" src="{% static "teamshifts/certificates.js" %}"></script>
+{% endblock %}
 {% block title %}{% trans "Certificates" %} :: {{ request.event.name }}{% endblock %}
 {% block teamshifts_header %}
     <h1>{% trans "Certificates" %}</h1>
@@ -66,18 +71,38 @@
         <fieldset>
             <legend>{% trans "Generation trigger" %}</legend>
             {% bootstrap_field form.generate_automatically layout="control" %}
+            <div class="form-group" id="certificate-manual-hint"{% if generates_automatically %} hidden{% endif %}>
+                <div class="col-md-9 col-md-offset-3">
+                    <p class="ts-certificate-hint">
+                        <i class="fa fa-info-circle"></i>
+                        {% blocktrans trimmed %}
+                            Automatic generation is off. Certificates are only generated and emailed when you click Generate all below,
+                            or send them to selected members from the <a href="{{ members_url }}">Members page</a>.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
         </fieldset>
 
         <fieldset>
             <legend>{% trans "Organizer actions" %}</legend>
             <div class="form-group">
                 <div class="col-md-9 col-md-offset-3">
-                    <button type="submit" name="action" value="generate_all" class="btn btn-default">
+                    <button type="submit" name="action" value="generate_all" class="btn btn-default"
+                            {% if not can_generate %}disabled{% endif %}
+                            {% if generation_hint %}aria-describedby="certificate-generation-hint"{% endif %}>
                         <span class="fa fa-cogs"></span> {% trans "Generate all" %}
                     </button>
                     <button type="submit" name="action" value="download_all" class="btn btn-default">
                         <span class="fa fa-download"></span> {% trans "Download all" %}
                     </button>
+                    {% if generation_hint %}
+                        <div>
+                            <p id="certificate-generation-hint" class="ts-certificate-hint">
+                                <i class="fa fa-info-circle"></i> {{ generation_hint }}
+                            </p>
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </fieldset>

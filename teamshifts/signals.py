@@ -13,7 +13,7 @@ from eventyay.base.email import SimpleFunctionalMailTextPlaceholder
 from eventyay.base.models.checkin import Checkin
 from eventyay.base.models.organizer import Team
 from eventyay.base.signals import checkin_created, register_mail_placeholders
-from eventyay.common.signals import periodic_task, user_menu_items
+from eventyay.common.signals import minimum_interval, periodic_task, user_menu_items
 from eventyay.control.signals import event_dashboard_components, nav_event_common, nav_global
 from eventyay.multidomain.urlreverse import build_absolute_uri
 from eventyay.presale.signals import header_nav_tabs
@@ -311,6 +311,7 @@ def dispatch_scheduled_emails(sender, **kwargs):
 
 
 @receiver(periodic_task, dispatch_uid="teamshifts_issue_event_end_certificates")
+@minimum_interval(minutes_after_success=15)
 def dispatch_event_end_certificates(sender, **kwargs):
     for event_id in events_awaiting_certificates():
         issue_event_end_certificates_task.apply_async(args=(event_id,))

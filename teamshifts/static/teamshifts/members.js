@@ -38,7 +38,7 @@ function restoreButtonChildren(button, originalChildren) {
     button.replaceChildren(...originalChildren);
 }
 
-function submitBulkForm(formId) {
+function submitBulkForm(formId, button) {
     const form = document.getElementById(formId);
     if (!form) return;
 
@@ -59,6 +59,7 @@ function submitBulkForm(formId) {
         form.appendChild(hidden);
     });
 
+    button.disabled = true;
     form.submit();
 }
 
@@ -109,11 +110,19 @@ document.addEventListener("DOMContentLoaded", () => {
     // Bulk send button
     const sendBtn = document.getElementById("bulk-send-btn");
     if (sendBtn) {
-        sendBtn.addEventListener("click", () => submitBulkForm("bulk-voucher-form"));
+        sendBtn.addEventListener("click", () => submitBulkForm("bulk-voucher-form", sendBtn));
     }
 
     const sendCertificatesBtn = document.getElementById("bulk-send-certificates-btn");
     if (sendCertificatesBtn) {
-        sendCertificatesBtn.addEventListener("click", () => submitBulkForm("bulk-certificate-form"));
+        sendCertificatesBtn.addEventListener("click", () => submitBulkForm("bulk-certificate-form", sendCertificatesBtn));
     }
+
+    window.addEventListener("pageshow", (event) => {
+        if (event.persisted) {
+            [sendBtn, sendCertificatesBtn].forEach((button) => {
+                if (button) button.disabled = false;
+            });
+        }
+    });
 });

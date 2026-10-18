@@ -8,7 +8,7 @@ def switch_existing_events_to_manual(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0025_shift_action_emails"),
+        ("teamshifts", "0026_membervoucher_keep_history"),
     ]
 
     operations = [
@@ -25,6 +25,16 @@ class Migration(migrations.Migration):
                 default="manual",
                 max_length=8,
                 verbose_name="Certificate generation trigger",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="membercertificate",
+            name="notified_at",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="Timestamp of the latest certificate email notification. Null means no notification has been sent yet.",
+                null=True,
+                verbose_name="Notified at",
             ),
         ),
         migrations.RunPython(switch_existing_events_to_manual, migrations.RunPython.noop),

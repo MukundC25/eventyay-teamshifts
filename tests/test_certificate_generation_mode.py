@@ -1,17 +1,19 @@
 from datetime import timedelta
 from unittest.mock import patch
-from zoneinfo import ZoneInfo
 
 import pytest
+from bs4 import BeautifulSoup
+from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
-from eventyay.base.models import User
+from eventyay.base.models import Event, Team, User
 
 from teamshifts.forms import CertificateSettingsForm
 from teamshifts.models import (
     ApplicationStatus,
     CallForTeamMembers,
     CertificateSettings,
+    CertificateStatus,
     CertificateTrigger,
     MemberCertificate,
     TeamMemberApplication,
@@ -19,8 +21,10 @@ from teamshifts.models import (
 from teamshifts.services.certificates import (
     event_has_ended,
     events_awaiting_certificates,
+    generate_certificate,
     generate_pending_certificates,
     get_certificate_settings,
+    issue_event_end_certificates_task,
     maybe_auto_issue_certificate,
     member_qualifies,
     send_certificates,
@@ -33,122 +37,261 @@ def active_scope(event):
         yield
 
 
+@pytest.fixture(autouse=True)
+def sent_emails():
+    with (
+        patch("teamshifts.services.certificates.transaction") as transaction,
+        patch("teamshifts.services.certificates._send_certificate_email") as send_email,
+    ):
+        transaction.on_commit.side_effect = lambda callback: callback()
+        yield send_email
+
+
+@pytest.fixture
+def orga_client(client, event, user, settings):
+    settings.SITE_URL = "https://testserver"
+    team = Team.objects.create(organizer=event.organizer, name="Orga Team", can_change_event_settings=True, all_events=True)
+    team.members.add(user)
+    client.force_login(user)
+    return client
+
+
+def _member(event, name="member", arrived=True):
+    user = User.objects.create_user(email=f"{name}@example.com", password="secret", fullname=name)
+    CallForTeamMembers.objects.get_or_create(event=event)
+    return TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED, arrived=arrived)
+
+
 @pytest.fixture
 def application(event):
-    member = User.objects.create_user(email="member@example.com", password="secret", fullname="Jane Member")
-    with scope(event=event):
-        CallForTeamMembers.objects.get_or_create(event=event)
-        return TeamMemberApplication.objects.create(event=event, user=member, status=ApplicationStatus.ACCEPTED, arrived=True)
+    return _member(event)
 
 
-def _set_event_dates(event, date_from, date_to):
-    event.date_from = date_from
-    event.date_to = date_to
-    event.save(update_fields=["date_from", "date_to"])
+def _configure(event, ended=None, **fields):
+    settings = get_certificate_settings(event)
+    for key, value in fields.items():
+        setattr(settings, key, value)
+    settings.save()
+    if ended is not None:
+        days = -5 if ended else 0
+        event.date_from = now() + timedelta(days=days - 1)
+        event.date_to = now() + timedelta(days=days + 1)
+        event.save(update_fields=["date_from", "date_to"])
+    return settings
+
+
+def _url(event, name, **kwargs):
+    return reverse(f"plugins:teamshifts:{name}", kwargs={"organizer": event.organizer.slug, "event": event.slug, **kwargs})
+
+
+def _fail_for(application):
+    real_generate = generate_certificate
+
+    def generate(target, *args, **kwargs):
+        if target.pk == application.pk:
+            raise OSError("storage unavailable")
+        return real_generate(target, *args, **kwargs)
+
+    return patch("teamshifts.services.certificates.generate_certificate", side_effect=generate)
 
 
 @pytest.mark.django_db
-def test_new_settings_default_to_manual(event):
+def test_new_and_untouched_events_stay_manual(event, application):
     settings = get_certificate_settings(event)
     assert settings.trigger == CertificateTrigger.MANUAL
+    assert settings.require_arrived is True
     assert settings.require_after_event_end is False
-
-
-@pytest.mark.django_db
-def test_untouched_event_does_not_auto_generate(event, application):
     assert maybe_auto_issue_certificate(application) is None
-    with scope(event=event):
-        assert not MemberCertificate.objects.filter(application=application).exists()
+    assert not MemberCertificate.objects.filter(application=application).exists()
 
 
 @pytest.mark.django_db
-def test_enabling_automatic_generation_does_not_generate_for_existing_members(event, application):
-    settings = get_certificate_settings(event)
+def test_enabling_automatic_generation_only_covers_later_qualifiers(event, application):
     form = CertificateSettingsForm(
         data={"require_arrived": "on", "min_shifts": "1", "match_mode": "all", "generate_automatically": "on"},
-        instance=settings,
+        instance=get_certificate_settings(event),
     )
     assert form.is_valid()
     form.save()
-    with scope(event=event):
-        assert not MemberCertificate.objects.filter(application=application).exists()
-        assert CertificateSettings.objects.get(event=event).trigger == CertificateTrigger.AUTO
+    assert CertificateSettings.objects.get(event=event).trigger == CertificateTrigger.AUTO
+    assert not MemberCertificate.objects.filter(application=application).exists()
+
+    assert maybe_auto_issue_certificate(application) is not None
 
 
 @pytest.mark.django_db
-def test_automatic_generation_issues_certificate_when_enabled(event, application):
-    settings = get_certificate_settings(event)
-    settings.trigger = CertificateTrigger.AUTO
-    settings.save(update_fields=["trigger"])
-    with patch("teamshifts.services.certificates.transaction.on_commit"):
-        certificate = maybe_auto_issue_certificate(application)
-    assert certificate is not None
+def test_after_event_end_gate_uses_last_day_in_event_timezone(event, application):
+    settings = _configure(event, ended=False, require_after_event_end=True)
+    assert event_has_ended(event) is False
+    assert member_qualifies(application, settings) is False
+
+    _configure(event, ended=True)
+    assert event_has_ended(event) is True
+    assert member_qualifies(application, settings) is True
+
+    Event.objects.filter(pk=event.pk).update(timezone="Pacific/Auckland")
+    event = Event.objects.get(pk=event.pk)
+    local_now = now().astimezone(event.tz)
+    event.date_to = local_now.replace(hour=23, minute=59)
+    event.date_from = event.date_to - timedelta(days=1)
+    event.save(update_fields=["date_from", "date_to"])
+    assert event_has_ended(event) is False
 
 
 @pytest.mark.django_db
-def test_after_event_end_condition_blocks_until_last_day_has_ended(event, application):
-    settings = get_certificate_settings(event)
-    settings.require_after_event_end = True
-    settings.save(update_fields=["require_after_event_end"])
-    with scope(event=event):
-        _set_event_dates(event, now() - timedelta(days=1), now() + timedelta(hours=1))
-        assert event_has_ended(event) is False
-        assert member_qualifies(application, settings) is False
+def test_existing_certificate_is_not_revoked_before_event_end(event, application):
+    generate_certificate(application)
+    _configure(event, ended=False, trigger=CertificateTrigger.AUTO, require_after_event_end=True)
 
-        _set_event_dates(event, now() - timedelta(days=5), now() - timedelta(days=3))
-        assert event_has_ended(event) is True
-        assert member_qualifies(application, settings) is True
+    assert maybe_auto_issue_certificate(application) is None
+    assert MemberCertificate.objects.filter(application=application).exists()
 
 
 @pytest.mark.django_db
-def test_event_end_uses_event_timezone(event):
-    event.settings.timezone = "Pacific/Auckland"
-    with scope(event=event):
-        local_now = now().astimezone(ZoneInfo("Pacific/Auckland"))
-        late_today = local_now.replace(hour=23, minute=0)
-        _set_event_dates(event, late_today - timedelta(days=1), late_today)
-        assert event_has_ended(event) is False
-
-
-@pytest.mark.django_db
-def test_generate_pending_certificates_only_after_event_end_and_when_automatic(event, application):
-    settings = get_certificate_settings(event)
-    settings.trigger = CertificateTrigger.AUTO
-    settings.require_after_event_end = True
-    settings.save(update_fields=["trigger", "require_after_event_end"])
-
-    with scope(event=event):
-        _set_event_dates(event, now() - timedelta(days=1), now() + timedelta(hours=1))
+def test_scheduled_issuing_after_event_end(event, application, sent_emails):
+    _configure(event, ended=False, trigger=CertificateTrigger.AUTO, require_after_event_end=True)
     assert generate_pending_certificates(event) == 0
 
-    with scope(event=event):
-        _set_event_dates(event, now() - timedelta(days=5), now() - timedelta(days=3))
+    _configure(event, ended=True)
     assert event.pk in events_awaiting_certificates()
-    with patch("teamshifts.services.certificates.transaction.on_commit"):
-        assert generate_pending_certificates(event) == 1
-        assert generate_pending_certificates(event) == 0
+    issue_event_end_certificates_task(event.pk)
+    assert MemberCertificate.objects.filter(application=application, notified_at__isnull=False).exists()
+    assert event.pk not in events_awaiting_certificates()
 
-    settings.trigger = CertificateTrigger.MANUAL
-    settings.save(update_fields=["trigger"])
+    MemberCertificate.objects.filter(application=application).update(notified_at=None)
+    assert event.pk in events_awaiting_certificates()
+    assert generate_pending_certificates(event) == 1
+    assert sent_emails.call_count == 2
+
+    _configure(event, trigger=CertificateTrigger.MANUAL)
+    MemberCertificate.objects.filter(application=application).update(notified_at=None)
     assert event.pk not in events_awaiting_certificates()
 
 
 @pytest.mark.django_db
-def test_send_certificates_skips_members_who_do_not_qualify(event, application):
-    other = User.objects.create_user(email="other@example.com", password="secret", fullname="Other Member")
-    with scope(event=event):
-        not_arrived = TeamMemberApplication.objects.create(event=event, user=other, status=ApplicationStatus.ACCEPTED)
-    with patch("teamshifts.services.certificates.transaction.on_commit"):
-        result = send_certificates(event, [application, not_arrived])
-    assert result == {"sent": 1, "not_qualified": 1, "no_email": 0}
-    with scope(event=event):
-        assert MemberCertificate.objects.filter(application=application).exists()
-        assert not MemberCertificate.objects.filter(application=not_arrived).exists()
+def test_send_certificates_skips_non_qualifying_and_resends(event, application, sent_emails):
+    not_arrived = _member(event, "absent", arrived=False)
+
+    result = send_certificates(event, [application, not_arrived])
+    send_certificates(event, [application])
+
+    assert result == {"sent": 1, "not_qualified": 1, "no_email": 0, "failed": 0}
+    assert not MemberCertificate.objects.filter(application=not_arrived).exists()
+    assert sent_emails.call_count == 2
 
 
 @pytest.mark.django_db
-def test_send_certificates_resends_to_already_notified_member(event, application):
-    with patch("teamshifts.services.certificates.transaction.on_commit") as on_commit:
-        send_certificates(event, [application])
-        send_certificates(event, [application])
-    assert on_commit.call_count == 2
+@pytest.mark.parametrize("bulk_action", ["send", "scheduled"])
+def test_bulk_actions_continue_after_a_failure(event, application, bulk_action):
+    other = _member(event, "other")
+    _configure(event, ended=True, trigger=CertificateTrigger.AUTO, require_after_event_end=True)
+
+    with _fail_for(application):
+        if bulk_action == "send":
+            assert send_certificates(event, [application, other]) == {"sent": 1, "not_qualified": 0, "no_email": 0, "failed": 1}
+        else:
+            assert generate_pending_certificates(event) == 1
+
+    assert not MemberCertificate.objects.filter(application=application).exists()
+    assert MemberCertificate.objects.filter(application=other).exists()
+
+
+@pytest.mark.django_db
+def test_regenerating_saves_new_file_before_removing_old_one(application):
+    old_name = generate_certificate(application).file.name
+    certificate = generate_certificate(application, resend=True)
+
+    assert certificate.file.name != old_name
+    assert not certificate.file.storage.exists(old_name)
+    assert certificate.file.storage.exists(certificate.file.name)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("arrived", "generated", "can_generate", "hint"),
+    [
+        (False, False, False, "No member meets the qualification conditions yet."),
+        (True, False, True, "1 member qualifies but has no certificate yet."),
+        (True, True, True, None),
+    ],
+)
+def test_settings_page_generation_hint(orga_client, event, arrived, generated, can_generate, hint):
+    application = _member(event, arrived=arrived)
+    if generated:
+        generate_certificate(application)
+
+    response = orga_client.get(_url(event, "certificates"))
+    button = BeautifulSoup(response.content, "html.parser").find("button", attrs={"value": "generate_all"})
+
+    assert button.has_attr("disabled") is not can_generate
+    if hint is None:
+        assert response.context["generation_hint"] is None
+    else:
+        assert str(response.context["generation_hint"]).startswith(hint)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("trigger", "hint", "manual_hint_hidden"),
+    [
+        (CertificateTrigger.MANUAL, "Certificates can be generated once the event has ended on", False),
+        (CertificateTrigger.AUTO, "Certificates will be generated and emailed automatically once the event has ended on", True),
+    ],
+)
+def test_settings_page_before_event_end(orga_client, event, application, trigger, hint, manual_hint_hidden):
+    _configure(event, ended=False, trigger=trigger, require_after_event_end=True)
+
+    response = orga_client.get(_url(event, "certificates"))
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    assert soup.find("button", attrs={"value": "generate_all"}).has_attr("disabled")
+    assert str(response.context["generation_hint"]).startswith(hint)
+    manual_hint = soup.find(id="certificate-manual-hint")
+    assert manual_hint.has_attr("hidden") is manual_hint_hidden
+    assert manual_hint.find("a")["href"] == _url(event, "members")
+    assert soup.find(id="id_generate_automatically") is not None
+    assert "teamshifts/certificates.js" in response.content.decode("utf-8")
+
+
+@pytest.mark.django_db
+def test_members_certificate_column_and_filter(orga_client, event):
+    _member(event, "pending")
+    generate_certificate(_member(event, "sent"))
+    generate_certificate(_member(event, "downloaded"))
+    generate_certificate(_member(event, "failed"))
+    MemberCertificate.objects.filter(application__user__fullname="downloaded").update(downloaded_at=now())
+    MemberCertificate.objects.filter(application__user__fullname="failed").update(notified_at=None)
+
+    soup = BeautifulSoup(orga_client.get(_url(event, "members")).content, "html.parser")
+    column = [th.get_text(strip=True) for th in soup.select("thead th")].index("Certificate")
+    cells = {row.select("td")[1].get_text(strip=True): row.select("td")[column] for row in soup.select("tbody tr")}
+
+    assert cells["pending"].get_text(" ", strip=True) == str(CertificateStatus.NOT_SENT.label)
+    assert cells["failed"].get_text(" ", strip=True) == str(CertificateStatus.NOT_SENT.label)
+    assert cells["sent"].find(class_="label")["class"] == ["label", CertificateStatus.SENT.label_class]
+    assert cells["sent"].find(class_="ts-certificate-sent-date") is not None
+    assert cells["downloaded"].find(class_="label")["class"] == ["label", CertificateStatus.DOWNLOADED.label_class]
+
+    expected = {
+        CertificateStatus.NOT_SENT: {"pending", "failed"},
+        CertificateStatus.SENT: {"sent"},
+        CertificateStatus.DOWNLOADED: {"downloaded"},
+    }
+    for status, names in expected.items():
+        response = orga_client.get(_url(event, "members"), {"certificate": status})
+        assert {member.user.fullname for member in response.context["members"]} == names
+        assert f"certificate={status}" in response.context["download_csv_url"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", ["bulk_send", "automatic"])
+def test_manual_and_automatic_sending_update_members_column(orga_client, event, path):
+    application = _member(event, arrived=path == "bulk_send")
+    if path == "bulk_send":
+        orga_client.post(_url(event, "bulk_send_certificates"), {"member_ids": [application.pk]})
+    else:
+        _configure(event, trigger=CertificateTrigger.AUTO)
+        orga_client.post(_url(event, "member_toggle_arrived", pk=application.pk))
+
+    application.refresh_from_db()
+    assert application.certificate_status == CertificateStatus.SENT
