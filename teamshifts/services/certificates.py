@@ -137,7 +137,7 @@ def member_qualifies(
         count = completed_count if completed_count is not None else completed_shift_count(application)
         checks.append(count >= settings.min_shifts)
     if not checks:
-        return False
+        return settings.require_after_event_end
     if settings.match_mode == CertificateMatchMode.ANY:
         return any(checks)
     return all(checks)

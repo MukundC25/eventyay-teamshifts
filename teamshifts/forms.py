@@ -830,7 +830,8 @@ class CertificateSettingsForm(forms.ModelForm):
         help_texts = {
             "require_after_event_end": _(
                 "No certificates are generated until the last day of the event has ended in the event timezone. "
-                "With automatic generation, they are then generated and emailed to everyone who qualifies."
+                "With automatic generation, they are then generated and emailed to everyone who qualifies. "
+                "Selected on its own, every accepted member qualifies once the event has ended."
             ),
         }
 
@@ -848,7 +849,7 @@ class CertificateSettingsForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if not cleaned.get("require_arrived") and not cleaned.get("require_min_shifts"):
+        if not any(cleaned.get(field) for field in ("require_arrived", "require_after_event_end", "require_min_shifts")):
             raise forms.ValidationError(_("Select at least one qualification condition."))
         min_shifts = cleaned.get("min_shifts") or 1
         if cleaned.get("require_min_shifts") and min_shifts < 1:

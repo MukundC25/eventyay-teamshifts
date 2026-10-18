@@ -139,6 +139,25 @@ def test_after_event_end_gate_uses_last_day_in_event_timezone(event, application
 
 
 @pytest.mark.django_db
+def test_after_event_end_alone_qualifies_every_accepted_member(event, orga_client):
+    absent = _member(event, "absent", arrived=False)
+    settings = _configure(event, ended=False, require_arrived=False, require_after_event_end=True)
+    assert member_qualifies(absent, settings) is False
+
+    _configure(event, ended=True)
+    assert member_qualifies(absent, settings) is True
+
+    form = CertificateSettingsForm(data={"require_after_event_end": "on", "min_shifts": "1", "match_mode": "all"}, instance=settings)
+    assert form.is_valid()
+
+    response = orga_client.post(_url(event, "certificates"), {"min_shifts": "1", "match_mode": "all"})
+    fieldsets = BeautifulSoup(response.content, "html.parser").find_all("fieldset")
+    conditions = next(fieldset for fieldset in fieldsets if "Qualification conditions" in fieldset.legend.get_text())
+    assert "Select at least one qualification condition." in conditions.get_text()
+    assert "Select at least one qualification condition." not in fieldsets[0].get_text()
+
+
+@pytest.mark.django_db
 def test_existing_certificate_is_not_revoked_before_event_end(event, application):
     generate_certificate(application)
     _configure(event, ended=False, trigger=CertificateTrigger.AUTO, require_after_event_end=True)

@@ -14,8 +14,6 @@
 {% block teamshifts_content %}
     <form action="" method="post" class="form-horizontal">
         {% csrf_token %}
-        {% bootstrap_form_errors form %}
-
         <fieldset>
             <legend>{% trans "Certificate design" %}</legend>
             <div class="form-group">
@@ -61,6 +59,7 @@
             <p class="help-block">
                 {% trans "A member qualifies when they meet the selected conditions. Shift completion is stored when a member checks out on My Shifts." %}
             </p>
+            {% bootstrap_form_errors form type="non_fields" %}
             {% bootstrap_field form.require_arrived layout="control" %}
             {% bootstrap_field form.require_after_event_end layout="control" %}
             {% bootstrap_field form.require_min_shifts layout="control" %}
