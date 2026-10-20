@@ -844,6 +844,7 @@ class CertificateSettingsForm(forms.ModelForm):
             after_event_end.help_text,
         )
         after_event_end.help_text = ""
+        self._issued_after_event_end = bool(self.instance and self.instance.pk and self.instance.issues_after_event_end)
         if self.instance and self.instance.pk:
             self.fields["generate_automatically"].initial = self.instance.trigger == CertificateTrigger.AUTO
 
@@ -859,6 +860,10 @@ class CertificateSettingsForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         instance.trigger = CertificateTrigger.AUTO if self.cleaned_data.get("generate_automatically") else CertificateTrigger.MANUAL
+        if not instance.issues_after_event_end:
+            instance.after_event_end_issuing_since = None
+        elif not self._issued_after_event_end:
+            instance.after_event_end_issuing_since = timezone.now()
         if commit:
             instance.save()
         return instance

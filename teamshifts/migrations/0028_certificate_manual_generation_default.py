@@ -8,7 +8,7 @@ def switch_existing_events_to_manual(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0026_membervoucher_keep_history"),
+        ("teamshifts", "0027_teamshiftsemailqueue_is_draft"),
     ]
 
     operations = [
@@ -16,6 +16,19 @@ class Migration(migrations.Migration):
             model_name="certificatesettings",
             name="require_after_event_end",
             field=models.BooleanField(default=False, verbose_name="Only after the event has ended"),
+        ),
+        migrations.AddField(
+            model_name="certificatesettings",
+            name="after_event_end_issuing_since",
+            field=models.DateTimeField(
+                blank=True,
+                help_text=(
+                    "Set when automatic generation and the after-event-end condition are both switched on. "
+                    "Certificates are only issued at the end of the event if this was set before the event ended."
+                ),
+                null=True,
+                verbose_name="Automatic issuing after the event enabled at",
+            ),
         ),
         migrations.AlterField(
             model_name="certificatesettings",

@@ -769,6 +769,15 @@ class CertificateSettings(models.Model):
         default=False,
         verbose_name=_("Only after the event has ended"),
     )
+    after_event_end_issuing_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Automatic issuing after the event enabled at"),
+        help_text=_(
+            "Set when automatic generation and the after-event-end condition are both switched on. "
+            "Certificates are only issued at the end of the event if this was set before the event ended."
+        ),
+    )
     layout = models.TextField(blank=True)
     background = models.FileField(null=True, blank=True, upload_to=certificate_background_name, max_length=255)
     updated_at = models.DateTimeField(auto_now=True)
@@ -781,6 +790,10 @@ class CertificateSettings(models.Model):
 
     def __str__(self):
         return f"Certificates ({self.event.slug})"
+
+    @property
+    def issues_after_event_end(self) -> bool:
+        return self.trigger == CertificateTrigger.AUTO and self.require_after_event_end
 
 
 class MemberCertificate(models.Model):

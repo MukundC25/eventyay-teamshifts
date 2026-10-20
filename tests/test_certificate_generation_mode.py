@@ -168,7 +168,13 @@ def test_existing_certificate_is_not_revoked_before_event_end(event, application
 
 @pytest.mark.django_db
 def test_scheduled_issuing_after_event_end(event, application, sent_emails):
-    _configure(event, ended=False, trigger=CertificateTrigger.AUTO, require_after_event_end=True)
+    _configure(
+        event,
+        ended=False,
+        trigger=CertificateTrigger.AUTO,
+        require_after_event_end=True,
+        after_event_end_issuing_since=now() - timedelta(days=30),
+    )
     assert generate_pending_certificates(event) == 0
 
     _configure(event, ended=True)
@@ -188,6 +194,30 @@ def test_scheduled_issuing_after_event_end(event, application, sent_emails):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(("ended_before_enabling", "issued"), [(False, 1), (True, 0)])
+def test_scheduled_issuing_is_not_retroactive(event, application, ended_before_enabling, issued):
+    settings = _configure(event, ended=ended_before_enabling)
+    form = CertificateSettingsForm(
+        data={"require_arrived": "on", "require_after_event_end": "on", "min_shifts": "1", "match_mode": "all", "generate_automatically": "on"},
+        instance=settings,
+    )
+    assert form.is_valid()
+    settings = form.save()
+    assert settings.after_event_end_issuing_since is not None
+    if not ended_before_enabling:
+        settings.after_event_end_issuing_since = now() - timedelta(days=30)
+        settings.save(update_fields=["after_event_end_issuing_since"])
+        _configure(event, ended=True)
+
+    assert (event.pk in events_awaiting_certificates()) is bool(issued)
+    assert generate_pending_certificates(event) == issued
+
+    form = CertificateSettingsForm(data={"require_arrived": "on", "min_shifts": "1", "match_mode": "all"}, instance=settings)
+    assert form.is_valid()
+    assert form.save().after_event_end_issuing_since is None
+
+
+@pytest.mark.django_db
 def test_send_certificates_skips_non_qualifying_and_resends(event, application, sent_emails):
     not_arrived = _member(event, "absent", arrived=False)
 
@@ -203,7 +233,13 @@ def test_send_certificates_skips_non_qualifying_and_resends(event, application, 
 @pytest.mark.parametrize("bulk_action", ["send", "scheduled"])
 def test_bulk_actions_continue_after_a_failure(event, application, bulk_action):
     other = _member(event, "other")
-    _configure(event, ended=True, trigger=CertificateTrigger.AUTO, require_after_event_end=True)
+    _configure(
+        event,
+        ended=True,
+        trigger=CertificateTrigger.AUTO,
+        require_after_event_end=True,
+        after_event_end_issuing_since=now() - timedelta(days=30),
+    )
 
     with _fail_for(application):
         if bulk_action == "send":

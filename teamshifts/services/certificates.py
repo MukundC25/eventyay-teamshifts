@@ -287,9 +287,14 @@ def send_certificates(event, applications) -> dict:
 PENDING_CERTIFICATE = Q(certificate__isnull=True) | Q(certificate__notified_at__isnull=True)
 
 
+def issues_at_event_end(settings: CertificateSettings, event) -> bool:
+    since = settings.after_event_end_issuing_since
+    return settings.issues_after_event_end and since is not None and since < event_end(event)
+
+
 def generate_pending_certificates(event) -> int:
     settings = get_certificate_settings(event)
-    if settings.trigger != CertificateTrigger.AUTO or not settings.require_after_event_end or not event_has_ended(event):
+    if not issues_at_event_end(settings, event) or not event_has_ended(event):
         return 0
     with scope(event=event):
         pending = list(
@@ -314,17 +319,20 @@ def generate_pending_certificates(event) -> int:
 
 def events_awaiting_certificates() -> list[int]:
     with scopes_disabled():
-        return list(
+        event_ids = (
             TeamMemberApplication.objects.filter(
                 PENDING_CERTIFICATE,
                 status=ApplicationStatus.ACCEPTED,
                 event__teamshifts_certificate_settings__trigger=CertificateTrigger.AUTO,
                 event__teamshifts_certificate_settings__require_after_event_end=True,
+                event__teamshifts_certificate_settings__after_event_end_issuing_since__isnull=False,
                 event__date_to__lte=now(),
             )
             .values_list("event_id", flat=True)
             .distinct()
         )
+        candidates = CertificateSettings.objects.filter(event_id__in=list(event_ids)).select_related("event")
+        return [settings.event_id for settings in candidates if issues_at_event_end(settings, settings.event)]
 
 
 @app.task(base=ProfiledEventTask, name="teamshifts.issue_event_end_certificates")
