@@ -614,6 +614,11 @@ class TeamShiftsEmailQueue(models.Model):
     mail_type = models.CharField(max_length=40, blank=True, default="")
     send_after = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    is_draft = models.BooleanField(
+        default=False,
+        verbose_name=_("Draft"),
+        help_text=_("Drafts are kept out of the outbox and are never sent until they are moved there."),
+    )
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
@@ -625,6 +630,8 @@ class TeamShiftsEmailQueue(models.Model):
         ordering = ["-created"]
 
     def __str__(self):
+        if self.is_draft:
+            return f"{self.event.slug} · draft · {self.subject}"
         state = "sent" if self.sent_at else ("scheduled" if self.send_after else "pending")
         return f"{self.event.slug} · {state} · {self.subject}"
 
