@@ -44,6 +44,9 @@
             </h4>
           </summary>
           <div class='panel-body'>
+            {% if "send_automatically" in panel.form.fields %}
+              {% bootstrap_field panel.form.send_automatically layout="control" %}
+            {% endif %}
             {% bootstrap_field panel.form.subject layout="control" %}
             <div class='form-group'>
               <label class='col-md-3 control-label'>

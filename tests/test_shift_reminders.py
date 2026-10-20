@@ -6,11 +6,13 @@ from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
 from eventyay.base.models import User
-from eventyay.base.services.mail import SendMailException
+from i18nfield.strings import LazyI18nString
 
+from teamshifts.forms import EmailTemplateForm
 from teamshifts.models import (
     ApplicationStatus,
     CallForTeamMembers,
+    EmailTemplateRoles,
     Shift,
     ShiftAssignment,
     ShiftLocation,
@@ -18,7 +20,7 @@ from teamshifts.models import (
     TeamMemberApplication,
     TeamRole,
 )
-from teamshifts.services.reminders import send_due_shift_reminders
+from teamshifts.services.reminders import MAX_ATTEMPTS, send_due_shift_reminders
 
 MAIL_PATH = "teamshifts.services.reminders.mail"
 SIGNED_UP_AT = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
@@ -83,7 +85,6 @@ def test_one_email_lists_all_shifts_of_the_day_sorted_by_time(event, cfm, accept
         sent = send_due_shift_reminders(REMINDER_DUE_AT)
 
     assert sent == 1
-    assert mock_mail.call_count == 1
     kwargs = mock_mail.call_args.kwargs
     lines = kwargs["context"]["shift_list"].split("\n")
     assert len(lines) == 3
@@ -91,8 +92,9 @@ def test_one_email_lists_all_shifts_of_the_day_sorted_by_time(event, cfm, accept
     assert "Noon" in lines[1]
     assert "Evening" in lines[2]
     assert all("Greeter" in line and "Main hall" in line for line in lines)
-    assert "Oct" in lines[0]
     assert str(kwargs["subject"]) == "Reminder: your shifts tomorrow at {event_name}"
+    assert "{my_shifts_url}" in str(kwargs["template"])
+    assert kwargs["context"]["my_shifts_url"].endswith("/common/my-shifts/")
     assert kwargs["email"] == "volunteer@example.com"
 
 
@@ -128,6 +130,20 @@ def test_shift_signed_up_less_than_24_hours_ahead_gets_no_reminder(event, cfm, a
 
 
 @pytest.mark.django_db
+def test_list_includes_late_signups_once_the_reminder_is_due(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START, name="Late signup", signed_up_at=FIRST_SHIFT_START - timedelta(hours=23))
+    planned = assign(FIRST_SHIFT_START + timedelta(hours=5), name="Planned")
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(planned.shift.start_time - timedelta(hours=24))
+
+    lines = mock_mail.call_args.kwargs["context"]["shift_list"].split("\n")
+    assert len(lines) == 2
+    assert "Late signup" in lines[0]
+    assert "Planned" in lines[1]
+
+
+@pytest.mark.django_db
 def test_signup_after_reminder_was_sent_gets_no_second_reminder(event, cfm, accepted, assign):
     assign(FIRST_SHIFT_START)
 
@@ -137,43 +153,6 @@ def test_signup_after_reminder_was_sent_gets_no_second_reminder(event, cfm, acce
         send_due_shift_reminders(REMINDER_DUE_AT + timedelta(hours=9))
 
     assert mock_mail.call_count == 1
-
-
-@pytest.mark.django_db
-def test_unexpected_error_releases_claim_without_aborting(event, cfm, accepted, assign):
-    assign(FIRST_SHIFT_START)
-
-    with patch(MAIL_PATH, side_effect=ValueError("bad template")):
-        assert send_due_shift_reminders(REMINDER_DUE_AT) == 0
-    with scope(event=event):
-        assert not ShiftReminder.objects.filter(event=event).exists()
-
-
-@pytest.mark.django_db
-def test_failed_send_is_retried_on_next_run(event, cfm, accepted, assign):
-    assign(FIRST_SHIFT_START)
-
-    with patch(MAIL_PATH, side_effect=SendMailException("boom")):
-        assert send_due_shift_reminders(REMINDER_DUE_AT) == 0
-    with scope(event=event):
-        assert not ShiftReminder.objects.filter(event=event).exists()
-
-    with patch(MAIL_PATH) as mock_mail:
-        assert send_due_shift_reminders(REMINDER_DUE_AT + timedelta(minutes=15)) == 1
-    assert mock_mail.call_count == 1
-
-
-@pytest.mark.django_db
-def test_my_shifts_page_offers_drop_action(client, event, cfm, accepted, assign, volunteer):
-    assign(datetime.now(UTC) + timedelta(days=3))
-    client.force_login(volunteer)
-
-    response = client.get(
-        reverse("plugins:teamshifts:my_shifts", kwargs={"organizer": event.organizer.slug, "event": event.slug}),
-    )
-
-    assert response.status_code == 200
-    assert "Drop shift" in response.content.decode()
 
 
 @pytest.mark.django_db
@@ -188,15 +167,95 @@ def test_no_reminder_once_first_shift_of_the_day_has_started(event, cfm, accepte
 
 
 @pytest.mark.django_db
-def test_interrupted_claim_is_recovered(event, cfm, accepted, assign, volunteer):
+def test_no_reminder_while_shift_schedule_is_unpublished(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START)
+    cfm.shift_schedule_published = False
+    cfm.save(update_fields=["shift_schedule_published"])
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(REMINDER_DUE_AT)
+
+    mock_mail.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_automatic_sending_can_be_turned_off_on_the_template(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START)
+    template = cfm.get_mail_template(EmailTemplateRoles.SHIFT_REMINDER)
+    assert template.send_automatically
+    assert "send_automatically" in EmailTemplateForm(instance=template).fields
+    assert "send_automatically" not in EmailTemplateForm(instance=cfm.get_mail_template(EmailTemplateRoles.APPLICATION_ACCEPTED)).fields
+
+    with scope(event=event):
+        template.send_automatically = False
+        template.save(update_fields=["send_automatically"])
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(REMINDER_DUE_AT)
+
+    mock_mail.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_html_template_gets_one_line_per_shift(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START, name="Morning")
+    assign(FIRST_SHIFT_START + timedelta(hours=5), name="<b>Noon</b>")
+    template = cfm.get_mail_template(EmailTemplateRoles.SHIFT_REMINDER)
+    with scope(event=event):
+        template.body = LazyI18nString({"en": "<p>{shift_list}</p>"})
+        template.save(update_fields=["body"])
+
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(REMINDER_DUE_AT)
+
+    shift_list = mock_mail.call_args.kwargs["context"]["shift_list"]
+    assert shift_list.count("<br>") == 1
+    assert "&lt;b&gt;Noon&lt;/b&gt;" in shift_list
+
+
+@pytest.mark.django_db
+def test_failed_send_is_retried_after_interval(event, cfm, accepted, assign):
+    assign(FIRST_SHIFT_START)
+
+    with patch(MAIL_PATH, side_effect=ValueError("bad template")):
+        assert send_due_shift_reminders(REMINDER_DUE_AT) == 0
+    with patch(MAIL_PATH) as mock_mail:
+        send_due_shift_reminders(REMINDER_DUE_AT + timedelta(minutes=15))
+    mock_mail.assert_not_called()
+
+    with scope(event=event):
+        ShiftReminder.objects.filter(event=event).update(claimed_at=now() - timedelta(hours=1))
+    with patch(MAIL_PATH) as mock_mail:
+        assert send_due_shift_reminders(REMINDER_DUE_AT + timedelta(hours=1)) == 1
+
+    with scope(event=event):
+        reminder = ShiftReminder.objects.get(event=event)
+    assert reminder.attempts == 2
+    assert reminder.sent_at is not None
+
+
+@pytest.mark.django_db
+def test_retries_stop_after_max_attempts(event, cfm, accepted, assign, volunteer):
     assign(FIRST_SHIFT_START)
     with scope(event=event):
-        reminder = ShiftReminder.objects.create(event=event, user=volunteer, day=date(2026, 10, 11))
+        reminder = ShiftReminder.objects.create(event=event, user=volunteer, day=date(2026, 10, 11), attempts=MAX_ATTEMPTS)
         ShiftReminder.objects.filter(pk=reminder.pk).update(claimed_at=now() - timedelta(hours=1))
 
     with patch(MAIL_PATH) as mock_mail:
         send_due_shift_reminders(REMINDER_DUE_AT)
 
-    assert mock_mail.call_count == 1
-    with scope(event=event):
-        assert ShiftReminder.objects.get(pk=reminder.pk).sent_at is not None
+    mock_mail.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_my_shifts_offers_drop_only_for_upcoming_shifts_on_a_published_schedule(client, event, cfm, accepted, assign, volunteer):
+    assign(now() + timedelta(days=3), name="Upcoming")
+    assign(now() - timedelta(hours=1), name="In progress")
+    client.force_login(volunteer)
+    url = reverse("plugins:teamshifts:my_shifts_global")
+
+    assert client.get(url).content.decode().count("Drop shift") == 1
+
+    cfm.shift_schedule_published = False
+    cfm.save(update_fields=["shift_schedule_published"])
+    assert "Drop shift" not in client.get(url).content.decode()

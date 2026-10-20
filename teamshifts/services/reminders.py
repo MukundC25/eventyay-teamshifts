@@ -1,15 +1,19 @@
 import logging
 from datetime import datetime, time, timedelta
+from urllib.parse import urljoin
 
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import F
 from django.utils.formats import date_format, time_format
+from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.translation import gettext
 from django_scopes import scope, scopes_disabled
 from eventyay.base.email import get_email_context
 from eventyay.base.i18n import language
 from eventyay.base.services.mail import mail
+from eventyay.multidomain.urlreverse import mainreverse
 from i18nfield.strings import LazyI18nString
 
 from ..models import EmailTemplateRoles, ShiftAssignment, ShiftReminder
@@ -18,14 +22,19 @@ logger = logging.getLogger(__name__)
 
 PLUGIN_NAME = "teamshifts"
 REMINDER_LEAD_TIME = timedelta(hours=24)
-CLAIM_TIMEOUT = timedelta(minutes=30)
+RETRY_INTERVAL = timedelta(minutes=30)
+MAX_ATTEMPTS = 3
 
 
-def _eligible_assignments():
+def my_shifts_url() -> str:
+    return urljoin(settings.SITE_URL, mainreverse("plugins:teamshifts:my_shifts_global"))
+
+
+def _reminder_assignments():
     return (
         ShiftAssignment.objects.filter(
             shift__event__plugins__contains=PLUGIN_NAME,
-            assigned_at__lte=F("shift__start_time") - REMINDER_LEAD_TIME,
+            shift__event__call_for_team_members__shift_schedule_published=True,
             team_member__is_active=True,
         )
         .exclude(team_member__email="")
@@ -34,9 +43,14 @@ def _eligible_assignments():
     )
 
 
+def _signed_up_in_advance(assignment) -> bool:
+    return assignment.assigned_at <= assignment.shift.start_time - REMINDER_LEAD_TIME
+
+
 def due_event_user_days(current) -> set[tuple]:
     with scopes_disabled():
-        due = _eligible_assignments().filter(
+        due = _reminder_assignments().filter(
+            assigned_at__lte=F("shift__start_time") - REMINDER_LEAD_TIME,
             shift__start_time__gt=current,
             shift__start_time__lte=current + REMINDER_LEAD_TIME,
         )
@@ -48,7 +62,7 @@ def day_assignments(event, user, day) -> list[ShiftAssignment]:
     day_end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=event.tz)
     with scopes_disabled():
         return list(
-            _eligible_assignments().filter(
+            _reminder_assignments().filter(
                 shift__event=event,
                 team_member=user,
                 shift__start_time__gte=day_start,
@@ -57,7 +71,11 @@ def day_assignments(event, user, day) -> list[ShiftAssignment]:
         )
 
 
-def format_shift_list(event, assignments, locale) -> str:
+def _is_html(text: str) -> bool:
+    return text.lstrip().startswith("<") or "data-variable=" in text
+
+
+def format_shift_list(event, assignments, locale, *, html=False) -> str:
     lines = []
     for assignment in assignments:
         shift = assignment.shift
@@ -75,6 +93,8 @@ def format_shift_list(event, assignments, locale) -> str:
                 "location": location or gettext("No location set"),
             }
         )
+    if html:
+        return "<br>".join(escape(line) for line in lines)
     return "\n".join(lines)
 
 
@@ -83,13 +103,13 @@ def _claim_reminder(event, user, day) -> ShiftReminder | None:
         reminder, created = ShiftReminder.objects.get_or_create(event=event, user=user, day=day)
         if created:
             return reminder
-        reclaimed = ShiftReminder.objects.filter(pk=reminder.pk, sent_at__isnull=True, claimed_at__lte=now() - CLAIM_TIMEOUT).update(claimed_at=now())
-    return reminder if reclaimed else None
-
-
-def _release_reminder(reminder: ShiftReminder) -> None:
-    with scope(event=reminder.event):
-        ShiftReminder.objects.filter(pk=reminder.pk).delete()
+        claimed = ShiftReminder.objects.filter(
+            pk=reminder.pk,
+            sent_at__isnull=True,
+            attempts__lt=MAX_ATTEMPTS,
+            claimed_at__lte=now() - RETRY_INTERVAL,
+        ).update(claimed_at=now(), attempts=F("attempts") + 1)
+    return reminder if claimed else None
 
 
 def _mark_sent(reminder: ShiftReminder) -> None:
@@ -97,15 +117,25 @@ def _mark_sent(reminder: ShiftReminder) -> None:
         ShiftReminder.objects.filter(pk=reminder.pk).update(sent_at=now())
 
 
+def _get_reminder_template(event):
+    try:
+        template = event.call_for_team_members.get_mail_template(EmailTemplateRoles.SHIFT_REMINDER)
+    except ObjectDoesNotExist:
+        logger.warning("[TeamShifts] No CFM for event %s — skipping shift reminders", event.slug)
+        return None
+    return template if template.send_automatically else None
+
+
 def _send_reminder(event, user, assignments, template) -> None:
     locale = user.locale or event.settings.locale
+    body = LazyI18nString(template.body)
     with language(locale):
-        shift_list = format_shift_list(event, assignments, locale)
+        shift_list = format_shift_list(event, assignments, locale, html=_is_html(str(body)))
     context = get_email_context(event=event, user=user, shift_list=shift_list)
     mail(
         email=user.email,
         subject=LazyI18nString(template.subject),
-        template=LazyI18nString(template.body),
+        template=body,
         context=context,
         event=event,
         locale=locale,
@@ -121,15 +151,12 @@ def send_due_shift_reminders(current=None) -> int:
     templates = {}
     for event, user, day in sorted(due_event_user_days(current), key=lambda group: (group[0].pk, group[1].pk, group[2])):
         assignments = day_assignments(event, user, day)
-        if not assignments or assignments[0].shift.start_time <= current:
+        first_in_advance = next((a for a in assignments if _signed_up_in_advance(a)), None)
+        if first_in_advance is None or first_in_advance.shift.start_time <= current:
             continue
 
         if event.pk not in templates:
-            try:
-                templates[event.pk] = event.call_for_team_members.get_mail_template(EmailTemplateRoles.SHIFT_REMINDER)
-            except ObjectDoesNotExist:
-                logger.warning("[TeamShifts] No CFM for event %s — skipping shift reminders", event.slug)
-                templates[event.pk] = None
+            templates[event.pk] = _get_reminder_template(event)
         template = templates[event.pk]
         if template is None:
             continue
@@ -138,10 +165,10 @@ def send_due_shift_reminders(current=None) -> int:
         if reminder is None:
             continue
 
+        upcoming = [a for a in assignments if a.shift.start_time > current]
         try:
-            _send_reminder(event, user, assignments, template)
+            _send_reminder(event, user, upcoming, template)
         except Exception:
-            _release_reminder(reminder)
             logger.exception("[TeamShifts] Failed to send shift reminder to %s for %s", user.email, day)
             continue
         _mark_sent(reminder)

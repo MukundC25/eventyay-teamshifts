@@ -463,6 +463,7 @@ class ShiftReminder(models.Model):
     )
     day = models.DateField(help_text=_("Event-local date of the shifts this reminder covered."))
     claimed_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveSmallIntegerField(default=1)
     sent_at = models.DateTimeField(null=True, blank=True)
 
     objects = ScopedManager(event="event")
@@ -684,6 +685,7 @@ class TeamShiftsEmailTemplate(models.Model):
     role = models.CharField(max_length=40, choices=EmailTemplateRoles.choices)
     subject = I18nTextField()
     body = I18nTextField()
+    send_automatically = models.BooleanField(default=True, db_default=True, verbose_name=_("Send automatically"))
     updated = models.DateTimeField(auto_now=True)
 
     objects = ScopedManager(event="event")

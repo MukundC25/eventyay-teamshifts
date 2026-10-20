@@ -96,6 +96,7 @@ from .services.email import (
     update_queued_email,
 )
 from .services.members import AlreadyMemberError, accept_manager_as_member, add_member_from_organizer
+from .services.reminders import my_shifts_url
 from .tasks import send_queued_email
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ _TEMPLATE_PLACEHOLDERS = [
     ("{shift_name}", _("The shift name (shift emails only)")),
     ("{shift_time}", _("The shift date and time range (shift emails only)")),
     ("{role_name}", _("The assigned role name (shift emails only)")),
+    ("{my_shifts_url}", _("Link to the volunteer's My Shifts page")),
     ("{shift_list}", _("The volunteer's shifts for the day (shift reminder emails only)")),
     ("{voucher_code}", _("The volunteer's voucher code (voucher emails only)")),
     ("{ticket_claim_url}", _("Link to claim the ticket (voucher emails only)")),
@@ -523,6 +525,7 @@ class EmailTemplatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMi
                 "shift_schedule_url": build_absolute_uri(event, "plugins:teamshifts:public_shift_schedule"),
                 "shift_name": "Morning Shift (2026-01-15 09:00 – 12:00)",
                 "shift_time": "2026-01-15 09:00 – 12:00",
+                "my_shifts_url": my_shifts_url(),
                 "shift_list": "- Sat, Oct 10, 2026, 8 a.m.–12 p.m.: Registration desk (Role: Greeter, Location: Main hall)",
                 "voucher_code": "ABCD-1234-EFGH",
                 "ticket_claim_url": build_absolute_uri(event, "presale:event.redeem") + "?voucher=ABCD-1234-EFGH",
@@ -3187,7 +3190,6 @@ class ShiftDetailView(PublicShiftScheduleMixin, TemplateView):
 
 class ShiftWithdrawView(PublicShiftScheduleMixin, View):
     allow_teamshifts_managers = True
-    redirect_unpublished_to_schedule = False
 
     def post(self, request, *args, **kwargs):
         event = self.event
@@ -3480,7 +3482,12 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
                 .exclude(file="")
                 .values_list("application__event_id", flat=True)
             )
+            published_event_ids = set(
+                CallForTeamMembers.objects.filter(event_id__in=event_ids, shift_schedule_published=True).values_list("event_id", flat=True)
+            )
         ctx["cert_event_ids"] = cert_event_ids
+        ctx["published_event_ids"] = published_event_ids
+        ctx["now"] = now()
         return ctx
 
 
