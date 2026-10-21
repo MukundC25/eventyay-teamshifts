@@ -259,3 +259,23 @@ def test_my_shifts_offers_drop_only_for_upcoming_shifts_on_a_published_schedule(
     cfm.shift_schedule_published = False
     cfm.save(update_fields=["shift_schedule_published"])
     assert "Drop shift" not in client.get(url).content.decode()
+
+
+@pytest.mark.django_db
+def test_volunteer_cannot_drop_a_started_shift(client, event, cfm, accepted, assign, volunteer):
+    started = assign(now() - timedelta(minutes=5), name="Started")
+    upcoming = assign(now() + timedelta(days=2), name="Upcoming")
+    client.force_login(volunteer)
+    headers = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+    def withdraw(assignment):
+        url = reverse("plugins:teamshifts:public_shift_withdraw", kwargs={"organizer": event.organizer.slug, "event": event.slug, "pk": assignment.shift_id})
+        return client.post(url, {"role_id": assignment.role_id}, **headers)
+
+    response = withdraw(started)
+    assert response.status_code == 400
+    assert "already started" in response.json()["error"]
+    assert withdraw(upcoming).status_code == 200
+    with scope(event=event):
+        assert ShiftAssignment.objects.filter(pk=started.pk).exists()
+        assert not ShiftAssignment.objects.filter(pk=upcoming.pk).exists()

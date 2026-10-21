@@ -3217,6 +3217,9 @@ class ShiftWithdrawView(PublicShiftScheduleMixin, View):
             if assignment is None:
                 return fail(_("You are not signed up for this shift."))
 
+            if shift.start_time <= now() and not has_any_teamshifts_permission(request.user, self.organizer, event, request=request):
+                return fail(_("This shift has already started, so it can no longer be dropped. Please contact the organizers."))
+
             role = assignment.role
             # A concurrent withdrawal may have deleted the row since the lookup. Only the
             # request that actually deletes it sends the drop emails.
