@@ -140,12 +140,15 @@ def test_summary_lists_current_shifts_sorted_or_links_to_schedule(event, cfm, vo
     base = now() + datetime.timedelta(days=3)
     late = _shift(event, "Teardown", base + datetime.timedelta(days=1))
     early = _shift(event, "Setup", base)
+    past = _shift(event, "Yesterday", now() - datetime.timedelta(days=1))
     with scope(event=event):
         ShiftAssignment.objects.create(shift=late, team_member=volunteer, role=role)
         ShiftAssignment.objects.create(shift=early, team_member=volunteer, role=role)
+        ShiftAssignment.objects.create(shift=past, team_member=volunteer, role=role)
     text = build_shift_summary(event, volunteer)
     assert text.index("Setup") < text.index("Teardown")
     assert "Role: Greeter" in text
+    assert "Yesterday" not in text
 
     with scope(event=event):
         ShiftAssignment.objects.all().delete()
@@ -196,6 +199,17 @@ def test_published_summary_is_sent_with_current_shifts(event, cfm, volunteer, ro
     context = mock_mail.call_args.kwargs["context"]
     assert "no shifts" in context["shift_summary"]
     assert context["my_shifts_url"] == context["shift_schedule_url"]
+
+
+@pytest.mark.django_db
+def test_summary_dates_follow_the_email_locale(event, cfm, volunteer, role):
+    start = now() + datetime.timedelta(days=3)
+    shift = _shift(event, "Setup", start)
+    with scope(event=event):
+        ShiftAssignment.objects.create(shift=shift, team_member=volunteer, role=role)
+    local = start.astimezone(event.tz)
+    assert local.strftime("%Y-%m-%d") in build_shift_summary(event, volunteer, "en")
+    assert local.strftime("%d.%m.%Y") in build_shift_summary(event, volunteer, "de")
 
 
 @pytest.mark.django_db

@@ -228,10 +228,12 @@ def queue_shift_summary_email(event: Event, user: User) -> TeamShiftsEmailQueue 
 
     current = now()
     with scope(event=event), transaction.atomic():
-        # Serialize concurrent changes for one volunteer: there is no pending row to lock yet.
+        # Serialize concurrent changes for one volunteer: there is no pending summary row to lock yet, so lock the
+        # volunteer's application, which exists for anyone who holds a shift. If it is gone, a race can at worst
+        # queue a duplicate summary.
         # An unsent summary is reused even when overdue, as long as the sender has not claimed the recipient: the
         # list is built after the claim, so it already includes this change.
-        User.objects.select_for_update().get(pk=user.pk)
+        TeamMemberApplication.objects.select_for_update().filter(event=event, user=user).first()
         pending = (
             TeamShiftsEmailQueue.objects.select_for_update()
             .filter(
