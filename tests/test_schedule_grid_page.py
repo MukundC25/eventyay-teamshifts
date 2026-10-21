@@ -20,7 +20,8 @@ def orga_client(client, event, user, settings):
 
 
 @pytest.mark.django_db
-def test_schedule_grid_provides_the_shared_editor_host_contract(orga_client, event):
+def test_schedule_grid_provides_the_shared_editor_host_contract(orga_client, event, settings):
+    settings.VITE_DEV_MODE = True
     url = reverse("plugins:teamshifts:schedule_grid", kwargs={"organizer": event.organizer.slug, "event": event.slug})
     response = orga_client.get(url)
 

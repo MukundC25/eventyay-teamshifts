@@ -414,12 +414,6 @@ label .optional {
     display: none;
 }
 
-@media print {
-    .schedule-editor-container > .schedule-header {
-        display: none;
-    }
-}
-
 .schedule-editor-container #schedule-action-wrapper .btn {
     height: 28px;
     padding: 0 10px;
@@ -530,6 +524,19 @@ label .optional {
         flex: 1;
         height: 100%;
         min-height: 0;
+    }
+}
+
+@media print {
+    #page-wrapper > .container-fluid:has(> .schedule-editor-container),
+    #page-wrapper > .container-fluid > .schedule-editor-container,
+    .schedule-editor-container > #app {
+        height: auto;
+        overflow: visible;
+    }
+
+    .schedule-editor-container > .schedule-header {
+        display: none;
     }
 }
 
