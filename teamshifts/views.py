@@ -1151,7 +1151,7 @@ class EmailComposeView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, For
         if copy_pk and copy_pk.isdigit():
             with scope(event=self.request.event):
                 try:
-                    source = TeamShiftsEmailQueue.objects.get(pk=int(copy_pk), event=self.request.event)
+                    source = TeamShiftsEmailQueue.objects.get(pk=int(copy_pk), event=self.request.event, mail_type="")
                 except TeamShiftsEmailQueue.DoesNotExist:
                     return initial
             initial["subject"] = source.subject

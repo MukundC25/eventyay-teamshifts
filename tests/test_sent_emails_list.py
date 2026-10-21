@@ -268,3 +268,27 @@ def test_sent_list_shows_placeholder_for_blank_subject(client, event, cfm, organ
     response = client.get(_sent_url(event))
 
     assert "(No subject)" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_sent_list_offers_copy_only_for_custom_emails(client, event, cfm, organizer_user, volunteer):
+    custom = _create_sent(event, volunteer, "Custom mail", author=organizer_user)
+    typed = _create_sent(event, volunteer, "Accepted mail", EmailTemplateRoles.APPLICATION_ACCEPTED)
+    client.force_login(organizer_user)
+
+    content = client.get(_sent_url(event)).content.decode()
+
+    assert f"?copy={custom.pk}" in content
+    assert f"?copy={typed.pk}" not in content
+
+
+@pytest.mark.django_db
+def test_compose_ignores_copy_of_typed_email(client, event, cfm, organizer_user, volunteer):
+    typed = _create_sent(event, volunteer, "Typed subject", EmailTemplateRoles.VOUCHER_SENT)
+    compose = reverse("plugins:teamshifts:email_compose", kwargs={"organizer": event.organizer.slug, "event": event.slug})
+    client.force_login(organizer_user)
+
+    response = client.get(compose, {"copy": typed.pk})
+
+    assert response.status_code == 200
+    assert "Typed subject" not in response.content.decode()

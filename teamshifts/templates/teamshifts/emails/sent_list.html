@@ -61,11 +61,13 @@
             {% endtimezone %}
           </td>
           <td>
-            <a class='btn btn-sm btn-default'
-               href='{% url "plugins:teamshifts:email_compose" organizer=request.organizer.slug event=request.event.slug %}?copy={{ mail.queue_id }}'
-               title='{% trans "Copy" %}'>
-              <i class='fa fa-copy'></i> {% trans "Copy" %}
-            </a>
+            {% if not mail.queue.mail_type %}
+              <a class='btn btn-sm btn-default'
+                 href='{% url "plugins:teamshifts:email_compose" organizer=request.organizer.slug event=request.event.slug %}?copy={{ mail.queue_id }}'
+                 title='{% trans "Copy" %}'>
+                <i class='fa fa-copy'></i> {% trans "Copy" %}
+              </a>
+            {% endif %}
           </td>
         </tr>
       {% empty %}
