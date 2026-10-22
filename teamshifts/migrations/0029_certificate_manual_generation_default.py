@@ -8,7 +8,7 @@ def switch_existing_events_to_manual(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0027_teamshiftsemailqueue_is_draft"),
+        ("teamshifts", "0028_email_queue_mail_type_and_recipient_subject"),
     ]
 
     operations = [
