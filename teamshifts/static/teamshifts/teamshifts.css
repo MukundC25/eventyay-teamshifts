@@ -410,6 +410,11 @@ label .optional {
     flex-shrink: 0;
 }
 
+.schedule-editor-container .pretalx-schedule .date-selector {
+    margin-top: 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
 .schedule-editor-container #schedule-fullscreen-btn .d-none {
     display: none;
 }
@@ -432,12 +437,23 @@ label .optional {
 }
 
 @media (min-width: 768px) {
-    #page-wrapper > .container-fluid:has(> .schedule-editor-container) {
+    #page-wrapper:has(> .container-fluid > .schedule-editor-container) {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    body[data-event] #page-wrapper > .container-fluid:has(> .schedule-editor-container) {
+        padding: 6px 0 0 16px;
         box-sizing: border-box;
         height: calc(100vh - var(--navbar-height, 50px));
         display: flex;
         flex-direction: column;
         overflow: hidden;
+    }
+
+    html[dir="rtl"] #page-wrapper > .container-fluid:has(> .schedule-editor-container),
+    html.rtl #page-wrapper > .container-fluid:has(> .schedule-editor-container) {
+        padding: 6px 16px 0 0;
     }
 
     #page-wrapper > .container-fluid:has(> .schedule-editor-container) > footer {

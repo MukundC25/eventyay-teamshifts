@@ -15,11 +15,7 @@
 
 {% block title %}{% trans "Shift Schedule" %} :: {{ request.event.name }}{% endblock %}
 
-{% block teamshifts_header %}
-  <h1>{% trans "Shift Schedule" %}</h1>
-{% endblock %}
-
-{% block teamshifts_content %}
+{% block content %}
   <form id="ts-publish-form" method="post" action="{% url 'plugins:teamshifts:schedule_toggle_publish' organizer=request.event.organizer.slug event=request.event.slug %}">
     {% csrf_token %}
   </form>
