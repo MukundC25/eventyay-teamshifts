@@ -30,6 +30,7 @@ from django_scopes import scope, scopes_disabled
 from eventyay.base.i18n import LazyI18nString, language
 from eventyay.base.models import Event, User
 from eventyay.base.templatetags.rich_text import compile_email_body, rich_text
+from eventyay.base.views.tasks import AsyncAction
 from eventyay.common.text.phrases import phrases
 from eventyay.control.forms.orders import ExporterForm
 from eventyay.control.views import PaginationMixin
@@ -86,7 +87,7 @@ from .permissions import (
     has_any_teamshifts_permission,
     has_teamshifts_permission,
 )
-from .services.certificates import maybe_auto_issue_certificate, send_certificates
+from .services.certificates import maybe_auto_issue_certificate, send_selected_certificates_task
 from .services.checkin import evaluate_shift_certificate, stamp_shift_end
 from .services.email import (
     DraftNoLongerEditable,
@@ -2083,11 +2084,17 @@ class MembersQuerysetMixin:
     @staticmethod
     def _certificate_status_filter(certificate_status):
         downloaded = Q(certificate__downloaded_at__isnull=False)
+        sent = Q(certificate__notified_at__isnull=False) & ~downloaded
+        generated = (
+            Q(certificate__file__isnull=False) & ~Q(certificate__file="") & Q(certificate__notified_at__isnull=True, certificate__downloaded_at__isnull=True)
+        )
         if certificate_status == CertificateStatus.DOWNLOADED:
             return downloaded
         if certificate_status == CertificateStatus.SENT:
-            return Q(certificate__notified_at__isnull=False) & ~downloaded
-        return (Q(certificate__isnull=True) | Q(certificate__notified_at__isnull=True)) & ~downloaded
+            return sent
+        if certificate_status == CertificateStatus.GENERATED:
+            return generated
+        return ~downloaded & ~sent & ~generated
 
     def _get_voucher_settings(self):
         try:
@@ -3485,6 +3492,7 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
 
             cert_event_ids = set(
                 MemberCertificate.objects.filter(
+                    Q(notified_at__isnull=False) | Q(downloaded_at__isnull=False),
                     application__user=self.request.user,
                     application__event_id__in=event_ids,
                     file__isnull=False,
@@ -3508,7 +3516,7 @@ class MyShiftsCertificateDownloadView(LoginRequiredMixin, View):
         if not application:
             raise Http404
         certificate = getattr(application, "certificate", None)
-        if not certificate or not certificate.file:
+        if not certificate or not certificate.file or certificate.status not in (CertificateStatus.SENT, CertificateStatus.DOWNLOADED):
             raise Http404
         response = FileResponse(
             certificate.file.open("rb"),
@@ -3520,76 +3528,59 @@ class MyShiftsCertificateDownloadView(LoginRequiredMixin, View):
         return response
 
 
-class BulkSendCertificatesView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):
+class BulkSendCertificatesView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, AsyncAction, View):
     permission = "can_teamshifts_manage_applicants"
+    task = send_selected_certificates_task
 
-    def post(self, request, *args, **kwargs):
-        event = request.event
-        member_ids = request.POST.getlist("member_ids")
-        members_url = reverse(
-            "plugins:teamshifts:members",
-            kwargs={"organizer": request.organizer.slug, "event": event.slug},
-        )
+    def get_success_url(self, value):
+        return reverse("plugins:teamshifts:members", kwargs={"organizer": self.request.organizer.slug, "event": self.request.event.slug})
 
-        if not member_ids:
-            messages.warning(request, _("No members selected."))
-            return redirect(members_url)
+    def get_error_url(self):
+        return self.get_success_url(None)
 
-        with scope(event=event):
-            applications = list(
-                TeamMemberApplication.objects.filter(
-                    event=event,
-                    pk__in=member_ids,
-                    status=ApplicationStatus.ACCEPTED,
-                ).select_related("user")
-            )
-
-        result = send_certificates(event, applications)
-
+    def get_success_message(self, value):
         parts = []
-        if result["sent"]:
+        if value["sent"]:
+            parts.append(ngettext("Certificate sent to %(count)d member.", "Certificates sent to %(count)d members.", value["sent"]) % {"count": value["sent"]})
+        if value["resent"]:
             parts.append(
-                ngettext(
-                    "Certificate sent to %(count)d member.",
-                    "Certificates sent to %(count)d members.",
-                    result["sent"],
-                )
-                % {"count": result["sent"]}
+                ngettext("Certificate resent to %(count)d member.", "Certificates resent to %(count)d members.", value["resent"]) % {"count": value["resent"]}
             )
-        if result["not_qualified"]:
+        if value["not_qualified"]:
             parts.append(
                 ngettext(
                     "%(count)d skipped (does not meet the certificate conditions).",
                     "%(count)d skipped (do not meet the certificate conditions).",
-                    result["not_qualified"],
+                    value["not_qualified"],
                 )
-                % {"count": result["not_qualified"]}
+                % {"count": value["not_qualified"]}
             )
-        if result["no_email"]:
+        if value["no_email"]:
             parts.append(
                 ngettext(
                     "%(count)d skipped (no email address on file).",
                     "%(count)d skipped (no email address on file).",
-                    result["no_email"],
+                    value["no_email"],
                 )
-                % {"count": result["no_email"]}
+                % {"count": value["no_email"]}
             )
-        if result["failed"]:
+        if value["failed"]:
             parts.append(
                 ngettext(
                     "%(count)d could not be generated. Try again later.",
                     "%(count)d could not be generated. Try again later.",
-                    result["failed"],
+                    value["failed"],
                 )
-                % {"count": result["failed"]}
+                % {"count": value["failed"]}
             )
+        return " ".join(str(part) for part in parts) or _("No certificates were sent.")
 
-        summary = " ".join(str(part) for part in parts)
-        if result["sent"]:
-            messages.success(request, summary)
-        else:
-            messages.warning(request, summary)
-        return redirect(members_url)
+    def post(self, request, *args, **kwargs):
+        member_ids = [int(pk) for pk in request.POST.getlist("member_ids") if pk.isdigit()]
+        if not member_ids:
+            messages.warning(request, _("No members selected."))
+            return redirect(self.get_success_url(None))
+        return self.do(request.event.pk, member_ids)
 
 
 class VoucherSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):

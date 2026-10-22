@@ -22,7 +22,7 @@
   {% endif %}
 
   {% if can_add_member %}
-    <form method='post' action='{% url "plugins:teamshifts:bulk_send_certificates" organizer=request.organizer.slug event=request.event.slug %}' id='bulk-certificate-form' class='ts-hidden'>
+    <form method='post' action='{% url "plugins:teamshifts:bulk_send_certificates" organizer=request.organizer.slug event=request.event.slug %}' id='bulk-certificate-form' class='ts-hidden' data-asynctask>
       {% csrf_token %}
     </form>
   {% endif %}

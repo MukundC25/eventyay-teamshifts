@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from bs4 import BeautifulSoup
+from django.test import Client
 from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
@@ -24,6 +25,7 @@ from teamshifts.services.certificates import (
     generate_certificate,
     generate_pending_certificates,
     get_certificate_settings,
+    issue_certificate,
     issue_event_end_certificates_task,
     maybe_auto_issue_certificate,
     member_qualifies,
@@ -218,15 +220,46 @@ def test_scheduled_issuing_is_not_retroactive(event, application, ended_before_e
 
 
 @pytest.mark.django_db
-def test_send_certificates_skips_non_qualifying_and_resends(event, application, sent_emails):
+def test_send_certificates_skips_non_qualifying_and_resends_without_regenerating(event, application, sent_emails):
     not_arrived = _member(event, "absent", arrived=False)
 
-    result = send_certificates(event, [application, not_arrived])
-    send_certificates(event, [application])
+    assert send_certificates(event, [application, not_arrived]) == {"sent": 1, "resent": 0, "not_qualified": 1, "no_email": 0, "failed": 0}
+    certificate = MemberCertificate.objects.get(application=application)
+    MemberCertificate.objects.filter(pk=certificate.pk).update(downloaded_at=now())
 
-    assert result == {"sent": 1, "not_qualified": 1, "no_email": 0, "failed": 0}
+    assert send_certificates(event, [application])["resent"] == 1
+    certificate.refresh_from_db()
+    assert certificate.status == CertificateStatus.DOWNLOADED
+    assert certificate.file.name == MemberCertificate.objects.get(pk=certificate.pk).file.name
     assert not MemberCertificate.objects.filter(application=not_arrived).exists()
     assert sent_emails.call_count == 2
+
+
+@pytest.mark.django_db
+def test_generate_then_send_in_two_steps(orga_client, event, application, sent_emails):
+    member_client = Client()
+    member_client.force_login(application.user)
+    download_url = reverse("plugins:teamshifts:my_shifts_certificate_download", kwargs={"event_id": event.pk})
+
+    orga_client.post(_url(event, "certificates_generate"))
+    certificate = MemberCertificate.objects.get(application=application)
+    assert certificate.status == CertificateStatus.GENERATED
+    assert sent_emails.call_count == 0
+    assert member_client.get(download_url).status_code == 404
+
+    orga_client.post(_url(event, "certificates_send"))
+    certificate.refresh_from_db()
+    assert certificate.status == CertificateStatus.SENT
+    assert sent_emails.call_count == 1
+    assert member_client.get(download_url).status_code == 200
+
+    file_name = certificate.file.name
+    orga_client.post(_url(event, "certificates_generate"))
+    orga_client.post(_url(event, "certificates_send"))
+    certificate.refresh_from_db()
+    assert certificate.status == CertificateStatus.DOWNLOADED
+    assert certificate.file.name == file_name
+    assert sent_emails.call_count == 1
 
 
 @pytest.mark.django_db
@@ -243,7 +276,7 @@ def test_bulk_actions_continue_after_a_failure(event, application, bulk_action):
 
     with _fail_for(application):
         if bulk_action == "send":
-            assert send_certificates(event, [application, other]) == {"sent": 1, "not_qualified": 0, "no_email": 0, "failed": 1}
+            assert send_certificates(event, [application, other]) == {"sent": 1, "resent": 0, "not_qualified": 0, "no_email": 0, "failed": 1}
         else:
             assert generate_pending_certificates(event) == 1
 
@@ -254,81 +287,90 @@ def test_bulk_actions_continue_after_a_failure(event, application, bulk_action):
 @pytest.mark.django_db
 def test_regenerating_saves_new_file_before_removing_old_one(application):
     old_name = generate_certificate(application).file.name
-    certificate = generate_certificate(application, resend=True)
+    certificate = generate_certificate(application)
 
     assert certificate.file.name != old_name
     assert not certificate.file.storage.exists(old_name)
     assert certificate.file.storage.exists(certificate.file.name)
 
 
+def _actions(response):
+    soup = BeautifulSoup(response.content, "html.parser")
+    return (
+        soup.find("button", attrs={"form": "certificates-generate-form"}),
+        soup.find("button", attrs={"form": "certificates-send-form"}),
+        soup.find("button", attrs={"value": "download_all"}),
+        str(response.context["generation_hint"]),
+        soup,
+    )
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("arrived", "generated", "can_generate", "hint"),
+    ("arrived", "state", "enabled", "hint"),
     [
-        (False, False, False, "No member meets the qualification conditions yet."),
-        (True, False, True, "1 member qualifies but has no certificate yet."),
-        (True, True, True, None),
+        (False, None, (False, False, False), "No member meets the qualification conditions yet."),
+        (True, None, (True, False, False), "Generate certificates first."),
+        (True, "generated", (True, True, True), "1 certificate is ready to send."),
+        (True, "sent", (False, False, True), "The certificate has been sent."),
     ],
 )
-def test_settings_page_generation_hint(orga_client, event, arrived, generated, can_generate, hint):
+def test_settings_page_actions_and_hint(orga_client, event, arrived, state, enabled, hint):
     application = _member(event, arrived=arrived)
-    if generated:
+    if state == "generated":
         generate_certificate(application)
+    elif state == "sent":
+        issue_certificate(application)
 
-    response = orga_client.get(_url(event, "certificates"))
-    button = BeautifulSoup(response.content, "html.parser").find("button", attrs={"value": "generate_all"})
+    generate, send, download, generation_hint, _soup = _actions(orga_client.get(_url(event, "certificates")))
 
-    assert button.has_attr("disabled") is not can_generate
-    if hint is None:
-        assert response.context["generation_hint"] is None
-    else:
-        assert str(response.context["generation_hint"]).startswith(hint)
+    assert [not button.has_attr("disabled") for button in (generate, send, download)] == list(enabled)
+    assert generation_hint.startswith(hint)
+    if state == "generated":
+        assert "Generate certificates (1)" in generate.get_text(" ", strip=True)
+        assert "Send certificates (1)" in send.get_text(" ", strip=True)
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("trigger", "hint", "manual_hint_hidden"),
+    ("trigger", "hint"),
     [
-        (CertificateTrigger.MANUAL, "Certificates can be generated once the event has ended on", False),
-        (CertificateTrigger.AUTO, "Certificates will be generated and emailed automatically once the event has ended on", True),
+        (CertificateTrigger.MANUAL, "Certificates can be generated once the event has ended on"),
+        (CertificateTrigger.AUTO, "Certificates will be generated and emailed automatically once the event has ended on"),
     ],
 )
-def test_settings_page_before_event_end(orga_client, event, application, trigger, hint, manual_hint_hidden):
+def test_settings_page_before_event_end(orga_client, event, application, trigger, hint):
     _configure(event, ended=False, trigger=trigger, require_after_event_end=True)
 
-    response = orga_client.get(_url(event, "certificates"))
-    soup = BeautifulSoup(response.content, "html.parser")
+    generate, send, download, generation_hint, soup = _actions(orga_client.get(_url(event, "certificates")))
 
-    assert soup.find("button", attrs={"value": "generate_all"}).has_attr("disabled")
-    assert str(response.context["generation_hint"]).startswith(hint)
-    manual_hint = soup.find(id="certificate-manual-hint")
-    assert manual_hint.has_attr("hidden") is manual_hint_hidden
-    assert manual_hint.find("a")["href"] == _url(event, "members")
-    assert soup.find(id="id_generate_automatically") is not None
-    assert "teamshifts/certificates.js" in response.content.decode("utf-8")
+    assert all(button.has_attr("disabled") for button in (generate, send, download))
+    assert generation_hint.startswith(hint)
+    assert soup.find("a", href=_url(event, "members")) is not None
+    assert soup.find("form", id="certificates-generate-form").has_attr("data-asynctask")
 
 
 @pytest.mark.django_db
 def test_members_certificate_column_and_filter(orga_client, event):
     _member(event, "pending")
-    generate_certificate(_member(event, "sent"))
-    generate_certificate(_member(event, "downloaded"))
-    generate_certificate(_member(event, "failed"))
+    generate_certificate(_member(event, "generated"))
+    issue_certificate(_member(event, "sent"))
+    issue_certificate(_member(event, "downloaded"))
     MemberCertificate.objects.filter(application__user__fullname="downloaded").update(downloaded_at=now())
-    MemberCertificate.objects.filter(application__user__fullname="failed").update(notified_at=None)
 
     soup = BeautifulSoup(orga_client.get(_url(event, "members")).content, "html.parser")
     column = [th.get_text(strip=True) for th in soup.select("thead th")].index("Certificate")
     cells = {row.select("td")[1].get_text(strip=True): row.select("td")[column] for row in soup.select("tbody tr")}
 
-    assert cells["pending"].get_text(" ", strip=True) == str(CertificateStatus.NOT_SENT.label)
-    assert cells["failed"].get_text(" ", strip=True) == str(CertificateStatus.NOT_SENT.label)
+    assert cells["pending"].get_text(" ", strip=True) == str(CertificateStatus.NOT_GENERATED.label)
+    assert cells["generated"].find(class_="label")["class"] == ["label", CertificateStatus.GENERATED.label_class]
     assert cells["sent"].find(class_="label")["class"] == ["label", CertificateStatus.SENT.label_class]
     assert cells["sent"].find(class_="ts-certificate-sent-date") is not None
     assert cells["downloaded"].find(class_="label")["class"] == ["label", CertificateStatus.DOWNLOADED.label_class]
 
     expected = {
-        CertificateStatus.NOT_SENT: {"pending", "failed"},
+        CertificateStatus.NOT_GENERATED: {"pending"},
+        CertificateStatus.GENERATED: {"generated"},
         CertificateStatus.SENT: {"sent"},
         CertificateStatus.DOWNLOADED: {"downloaded"},
     }

@@ -60,7 +60,7 @@ function submitBulkForm(formId, button) {
     });
 
     button.disabled = true;
-    form.submit();
+    form.requestSubmit();
 }
 
 document.addEventListener("DOMContentLoaded", () => {

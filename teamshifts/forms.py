@@ -804,11 +804,6 @@ class CertificateSettingsForm(forms.ModelForm):
     generate_automatically = forms.BooleanField(
         required=False,
         label=_("Generate automatically"),
-        help_text=_(
-            "When enabled, a certificate is generated and emailed to a member as soon as they meet the conditions, "
-            "for example right after they are marked arrived. When disabled (default), certificates are only "
-            "generated when an organizer clicks Generate all."
-        ),
     )
 
     class Meta:

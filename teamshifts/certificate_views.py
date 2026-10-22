@@ -9,10 +9,12 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.formats import date_format
 from django.utils.functional import cached_property
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _, ngettext
 from django.views.generic import View
 from django_scopes import scope
 from eventyay.base.models import CachedFile
+from eventyay.base.views.tasks import AsyncAction
 from eventyay.control.views.pdf import BaseEditorView
 
 from .forms import CertificateSettingsForm
@@ -32,9 +34,10 @@ from .permissions import TeamShiftsPermissionRequiredMixin, can_view_email_addre
 from .services.certificates import (
     event_has_ended,
     event_last_day,
-    generate_all_certificates,
+    generate_certificates_task,
     get_certificate_settings,
     member_qualifies,
+    send_generated_certificates_task,
     zip_generated_certificates,
 )
 from .views import PluginActiveMixin
@@ -54,18 +57,6 @@ class CertificateSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
     def post(self, request, *args, **kwargs):
         settings = get_certificate_settings(request.event)
         action = request.POST.get("action")
-        if action == "generate_all":
-            count = generate_all_certificates(request.event)
-            messages.success(
-                request,
-                ngettext(
-                    "Generated certificates for %(count)s member.",
-                    "Generated certificates for %(count)s members.",
-                    count,
-                )
-                % {"count": count},
-            )
-            return redirect(self._url(request))
         if action == "download_all":
             archive = zip_generated_certificates(request.event)
             if not archive:
@@ -113,39 +104,94 @@ class CertificateSettingsView(PluginActiveMixin, TeamShiftsPermissionRequiredMix
                     "qualifies": member_qualifies(member, settings, completed_count=completed),
                     "completed": completed,
                     "generated": bool(certificate and certificate.file),
+                    "sent": bool(certificate and certificate.notified_at),
                     "downloaded": bool(certificate and certificate.downloaded_at),
                 }
             )
+        qualifying = [row for row in rows if row["qualifies"]]
+        generate_count = sum(1 for row in qualifying if not row["sent"])
+        send_count = sum(1 for row in qualifying if row["generated"] and not row["sent"])
+        members_url = reverse("plugins:teamshifts:members", kwargs={"organizer": request.organizer.slug, "event": event.slug})
         return {
             "form": form,
             "settings": settings,
-            "generates_automatically": settings.trigger == CertificateTrigger.AUTO,
-            "members_url": reverse("plugins:teamshifts:members", kwargs={"organizer": request.organizer.slug, "event": event.slug}),
-            "can_generate": any(row["qualifies"] for row in rows),
-            "generation_hint": self._generation_hint(event, settings, rows),
+            "members_url": members_url,
+            "generate_count": generate_count,
+            "send_count": send_count,
+            "can_download": any(row["generated"] for row in qualifying),
+            "generation_hint": self._generation_hint(event, settings, qualifying, generate_count, send_count, members_url),
             "placeholders": CERTIFICATE_PLACEHOLDERS,
             "rows": rows,
             "can_view_email": can_view_email_addresses(request.user, request.organizer, event, request=request),
         }
 
-    def _generation_hint(self, event, settings, rows):
+    def _generation_hint(self, event, settings, qualifying, generate_count, send_count, members_url):
         if settings.require_after_event_end and not event_has_ended(event):
             last_day = date_format(event_last_day(event), "DATE_FORMAT")
             if settings.trigger == CertificateTrigger.AUTO:
                 return _("Certificates will be generated and emailed automatically once the event has ended on %(date)s.") % {"date": last_day}
             return _("Certificates can be generated once the event has ended on %(date)s.") % {"date": last_day}
-        if not any(row["qualifies"] for row in rows):
+        if not qualifying:
             return _("No member meets the qualification conditions yet.")
-        pending = sum(1 for row in rows if row["qualifies"] and not row["generated"])
-        if pending:
+        if send_count:
             return ngettext(
-                "%(count)d member qualifies but has no certificate yet. Click Generate all to generate and email it, "
-                "or send certificates to selected members from the Members page.",
-                "%(count)d members qualify but have no certificate yet. Click Generate all to generate and email them, "
-                "or send certificates to selected members from the Members page.",
-                pending,
-            ) % {"count": pending}
-        return None
+                "%(count)d certificate is ready to send. Generating again updates it, e.g. after a design change.",
+                "%(count)d certificates are ready to send. Generating again updates them, e.g. after a design change.",
+                send_count,
+            ) % {"count": send_count}
+        if generate_count:
+            return _("Generate certificates first.")
+        return format_html(
+            ngettext(
+                'The certificate has been sent. To resend it, use the <a href="{url}">Members page</a>.',
+                'All {count} certificates have been sent. To resend to someone, use the <a href="{url}">Members page</a>.',
+                len(qualifying),
+            ),
+            count=len(qualifying),
+            url=members_url,
+        )
+
+
+class CertificateBulkActionView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, AsyncAction, View):
+    permission = "can_teamshifts_manage_applicants"
+
+    def get_success_url(self, value):
+        return reverse("plugins:teamshifts:certificates", kwargs={"organizer": self.request.organizer.slug, "event": self.request.event.slug})
+
+    def get_error_url(self):
+        return self.get_success_url(None)
+
+    def post(self, request, *args, **kwargs):
+        return self.do(request.event.pk)
+
+
+class CertificateGenerateView(CertificateBulkActionView):
+    task = generate_certificates_task
+
+    def get_success_message(self, value):
+        message = ngettext(
+            "Generated %(count)d certificate. No emails were sent.",
+            "Generated %(count)d certificates. No emails were sent.",
+            value["generated"],
+        ) % {"count": value["generated"]}
+        if value["failed"]:
+            message += " " + ngettext(
+                "%(count)d could not be generated. Try again later.",
+                "%(count)d could not be generated. Try again later.",
+                value["failed"],
+            ) % {"count": value["failed"]}
+        return message
+
+
+class CertificateSendView(CertificateBulkActionView):
+    task = send_generated_certificates_task
+
+    def get_success_message(self, value):
+        return ngettext(
+            "Sent %(count)d certificate.",
+            "Sent %(count)d certificates.",
+            value["sent"],
+        ) % {"count": value["sent"]}
 
 
 class CertificatePreviewView(PluginActiveMixin, TeamShiftsPermissionRequiredMixin, View):

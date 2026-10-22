@@ -355,7 +355,7 @@ class TeamMemberApplication(models.Model):
         try:
             return self.certificate.status
         except ObjectDoesNotExist:
-            return CertificateStatus.NOT_SENT
+            return CertificateStatus.NOT_GENERATED
 
 
 class Shift(models.Model):
@@ -712,14 +712,16 @@ class CertificateTrigger(models.TextChoices):
 
 
 class CertificateStatus(models.TextChoices):
-    NOT_SENT = "not_sent", _("Not sent")
+    NOT_GENERATED = "not_generated", _("Not generated")
+    GENERATED = "generated", _("Generated — not sent")
     SENT = "sent", _("Sent — not downloaded")
     DOWNLOADED = "downloaded", _("Downloaded")
 
     @property
     def label_class(self) -> str:
         return {
-            CertificateStatus.NOT_SENT: "label-default",
+            CertificateStatus.NOT_GENERATED: "label-default",
+            CertificateStatus.GENERATED: "label-warning",
             CertificateStatus.SENT: "label-info",
             CertificateStatus.DOWNLOADED: "label-success",
         }[self]
@@ -827,7 +829,9 @@ class MemberCertificate(models.Model):
             return CertificateStatus.DOWNLOADED
         if self.notified_at:
             return CertificateStatus.SENT
-        return CertificateStatus.NOT_SENT
+        if self.file:
+            return CertificateStatus.GENERATED
+        return CertificateStatus.NOT_GENERATED
 
 
 class VoucherStatus(models.TextChoices):

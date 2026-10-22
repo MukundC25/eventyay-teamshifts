@@ -370,6 +370,16 @@ urlpatterns = [
         name="certificates",
     ),
     path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/generate/",
+        certificate_views.CertificateGenerateView.as_view(),
+        name="certificates_generate",
+    ),
+    path(
+        "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/send/",
+        certificate_views.CertificateSendView.as_view(),
+        name="certificates_send",
+    ),
+    path(
         "teamshifts/event/<orgslug:organizer>/<slug:event>/certificates/preview/",
         certificate_views.CertificatePreviewView.as_view(),
         name="certificate_preview",
