@@ -527,7 +527,7 @@ class VolunteerSelect2Multiple(Select2Multiple):
 
 
 class EmailComposeForm(forms.Form):
-    def __init__(self, *args, event=None, show_emails=False, **kwargs):
+    def __init__(self, *args, event=None, show_emails=False, draft_save=False, **kwargs):
         super().__init__(*args, **kwargs)
         self._event = event
         locales = list(event.settings.get("locales") or [event.settings.locale])
@@ -535,13 +535,13 @@ class EmailComposeForm(forms.Form):
         self.fields["subject"] = I18nFormField(
             label=_("Subject"),
             widget=I18nTextInput,
-            required=True,
+            required=not draft_save,
             locales=locales,
         )
         self.fields["message"] = I18nFormField(
             label=_("Message"),
             widget=_HtmlNormalizingEmailWidget,
-            required=True,
+            required=not draft_save,
             locales=locales,
             widget_kwargs={
                 "attrs": {"rows": 10},

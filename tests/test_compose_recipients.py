@@ -223,10 +223,11 @@ def test_compose_without_volunteers_still_uses_the_status_filter(coordinator_cli
 @pytest.mark.django_db
 def test_compose_goes_through_the_outbox_queue_for_chosen_volunteers(coordinator_client, event, accepted, pending):
     with patch("teamshifts.services.email.send_queued_email") as task:
-        coordinator_client.post(_compose_url(event), _compose_data(action="draft", individual_volunteers=[accepted.pk]))
+        coordinator_client.post(_compose_url(event), _compose_data(action="outbox", individual_volunteers=[accepted.pk]))
 
     (queue,) = _queued(event)
     assert {r.email for r in queue.recipients.all()} == {"alice@example.com"}
+    assert queue.is_draft is False
     assert queue.sent_at is None
     task.delay.assert_not_called()
 
@@ -415,3 +416,91 @@ def test_outbox_labels_emails_sent_to_specific_volunteers(coordinator_client, ev
     row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
     assert "Specific volunteers" in row_picked
     assert "Specific volunteers" not in row_filtered
+
+
+def _save_draft(client, event, **data):
+    with patch("teamshifts.services.email._dispatch") as dispatch:
+        response = client.post(_compose_url(event), _compose_data(action="draft", **data))
+    assert response.status_code == 302
+    dispatch.assert_not_called()
+    (draft,) = _queued(event)
+    return draft
+
+
+@pytest.mark.django_db
+def test_saving_a_draft_with_chosen_volunteers_keeps_them_and_the_marker(coordinator_client, event, accepted, pending):
+    draft = _save_draft(coordinator_client, event, status=ApplicationStatus.ACCEPTED, individual_volunteers=[pending.pk])
+
+    assert draft.is_draft is True
+    assert draft.individual_recipients is True
+    assert {r.email for r in draft.recipients.all()} == {"chloe@example.com"}
+
+
+@pytest.mark.django_db
+def test_reopening_a_draft_with_chosen_volunteers_restores_them(coordinator_client, event, accepted, pending):
+    draft = _save_draft(coordinator_client, event, status=ApplicationStatus.ACCEPTED, individual_volunteers=[pending.pk])
+
+    html = coordinator_client.get(_compose_url(event) + f"?draft={draft.pk}").content.decode()
+
+    assert "Edit draft" in html
+    assert f'<option value="{pending.pk}" selected>' in html
+    assert f'<option value="{accepted.pk}" selected>' not in html
+    assert '<option value="accepted" selected>' in html
+    assert '<option value="" selected>' not in html
+
+
+@pytest.mark.django_db
+def test_sending_a_reopened_draft_with_chosen_volunteers_reaches_only_them(coordinator_client, event, accepted, pending, rejected):
+    draft = _save_draft(coordinator_client, event, individual_volunteers=[pending.pk])
+
+    with patch("teamshifts.services.email._dispatch") as dispatch:
+        response = coordinator_client.post(
+            _compose_url(event),
+            _compose_data(action="send", status="", draft_id=draft.pk, individual_volunteers=[pending.pk]),
+        )
+
+    assert response.status_code == 302
+    dispatch.assert_called_once()
+    (sent,) = _queued(event)
+    assert sent.pk == draft.pk
+    assert sent.is_draft is False
+    assert sent.individual_recipients is True
+    assert {r.email for r in sent.recipients.all()} == {"chloe@example.com"}
+
+
+@pytest.mark.django_db
+def test_clearing_the_picks_on_a_reopened_draft_switches_it_to_the_status_filter(coordinator_client, event, accepted, pending):
+    draft = _save_draft(coordinator_client, event, individual_volunteers=[pending.pk])
+
+    coordinator_client.post(_compose_url(event), _compose_data(action="draft", status=ApplicationStatus.ACCEPTED, draft_id=draft.pk))
+
+    (updated,) = _queued(event)
+    assert updated.individual_recipients is False
+    assert updated.status_filter == ApplicationStatus.ACCEPTED
+    assert {r.email for r in updated.recipients.all()} == {"alice@example.com"}
+
+
+@pytest.mark.django_db
+def test_reopening_a_draft_without_chosen_volunteers_keeps_its_status(coordinator_client, event, accepted, pending):
+    draft = _save_draft(coordinator_client, event, status=ApplicationStatus.PENDING)
+
+    html = coordinator_client.get(_compose_url(event) + f"?draft={draft.pk}").content.decode()
+
+    assert draft.individual_recipients is False
+    assert '<option value="pending" selected>' in html
+    assert f'<option value="{pending.pk}" selected>' not in html
+
+
+@pytest.mark.django_db
+def test_drafts_list_labels_drafts_for_chosen_volunteers(coordinator_client, event, user, accepted):
+    queue_email(event, "Picked draft", "<p>m</p>", [accepted], user=user, individual_recipients=True, is_draft=True)
+    queue_email(event, "Everyone draft", "<p>m</p>", [accepted], user=user, is_draft=True)
+
+    html = coordinator_client.get(reverse("plugins:teamshifts:email_drafts", kwargs={"organizer": event.organizer.slug, "event": event.slug})).content.decode()
+
+    row_picked = html[html.index("Picked draft") :].split("</tr>")[0]
+    row_everyone = html[html.index("Everyone draft") :].split("</tr>")[0]
+    assert "Specific volunteers" in row_picked
+    assert "All statuses" not in row_picked
+    assert "Specific volunteers" not in row_everyone
+    assert "All statuses" in row_everyone
