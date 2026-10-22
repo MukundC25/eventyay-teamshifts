@@ -10,7 +10,25 @@ document.addEventListener("DOMContentLoaded", () => {
     status.toggleAttribute("inert", overridden);
   };
 
-  if (window.jQuery) window.jQuery(picker).on("change", sync);
+  if (window.jQuery) {
+    const $picker = window.jQuery(picker);
+    $picker.on("change", sync);
+    $picker.on("select2:closing", (event) => {
+      if (event.params?.args?.originalSelect2Event) event.preventDefault();
+    });
+    $picker.on("select2:open", () => {
+      const list = document.getElementById(`select2-${picker.id}-results`);
+      if (!list || list.dataset.tsPickedRowsRemoved) return;
+      list.dataset.tsPickedRowsRemoved = "1";
+      new MutationObserver(() => {
+        list.querySelectorAll('.select2-results__option[aria-selected="true"]').forEach((row) => row.remove());
+        if (!list.querySelector(".select2-results__option--highlighted")) {
+          const first = list.querySelector('.select2-results__option[aria-selected="false"]');
+          if (first) window.jQuery(first).trigger("mouseenter");
+        }
+      }).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected"] });
+    });
+  }
   picker.addEventListener("change", sync);
   sync();
 });
