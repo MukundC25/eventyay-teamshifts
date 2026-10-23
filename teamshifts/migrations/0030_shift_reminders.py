@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0001_initial"),
-        ("teamshifts", "0027_teamshiftsemailqueue_is_draft"),
+        ("teamshifts", "0029_certificate_manual_generation_default"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

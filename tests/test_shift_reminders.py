@@ -19,6 +19,7 @@ from teamshifts.models import (
     ShiftReminder,
     TeamMemberApplication,
     TeamRole,
+    TeamShiftsEmailQueue,
 )
 from teamshifts.services.reminders import MAX_ATTEMPTS, send_due_shift_reminders
 
@@ -96,6 +97,10 @@ def test_one_email_lists_all_shifts_of_the_day_sorted_by_time(event, cfm, accept
     assert "{my_shifts_url}" in str(kwargs["template"])
     assert kwargs["context"]["my_shifts_url"].endswith("/common/my-shifts/")
     assert kwargs["email"] == "volunteer@example.com"
+    with scope(event=event):
+        sent_record = TeamShiftsEmailQueue.objects.get(event=event, mail_type=EmailTemplateRoles.SHIFT_REMINDER)
+    assert sent_record.sent_at is not None
+    assert sent_record.mail_type_label == "Shift reminder"
 
 
 @pytest.mark.django_db

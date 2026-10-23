@@ -13,10 +13,12 @@ from django_scopes import scope, scopes_disabled
 from eventyay.base.email import get_email_context
 from eventyay.base.i18n import language
 from eventyay.base.services.mail import mail
+from eventyay.celery_app import app
 from eventyay.multidomain.urlreverse import mainreverse
 from i18nfield.strings import LazyI18nString
 
 from ..models import EmailTemplateRoles, ShiftAssignment, ShiftReminder
+from .email import record_sent_email
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +128,7 @@ def _get_reminder_template(event):
     return template if template.send_automatically else None
 
 
-def _send_reminder(event, user, assignments, template) -> None:
+def _send_reminder(event, user, assignments, template) -> tuple[dict, str]:
     locale = user.locale or event.settings.locale
     body = LazyI18nString(template.body)
     with language(locale):
@@ -143,6 +145,7 @@ def _send_reminder(event, user, assignments, template) -> None:
         auto_email=False,
         sync_send=True,
     )
+    return context, locale
 
 
 def send_due_shift_reminders(current=None) -> int:
@@ -167,11 +170,18 @@ def send_due_shift_reminders(current=None) -> int:
 
         upcoming = [a for a in assignments if a.shift.start_time > current]
         try:
-            _send_reminder(event, user, upcoming, template)
+            context, locale = _send_reminder(event, user, upcoming, template)
         except Exception:
             logger.exception("[TeamShifts] Failed to send shift reminder to %s for %s", user.email, day)
             continue
         _mark_sent(reminder)
+        record_sent_email(event, user, template.subject, template.body, context, locale, EmailTemplateRoles.SHIFT_REMINDER)
         sent += 1
         logger.info("[TeamShifts] Shift reminder sent to user %s for event %s on %s", user.pk, event.slug, day)
     return sent
+
+
+@app.task(name="teamshifts.send_shift_reminders")
+def send_shift_reminders_task():
+    sent = send_due_shift_reminders()
+    logger.info("[TeamShifts] Sent %s shift reminder emails", sent)

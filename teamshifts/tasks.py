@@ -7,14 +7,14 @@ from django.db import transaction
 from django.utils.timezone import now
 from django_scopes import scope, scopes_disabled
 from eventyay.base.email import get_email_context
+from eventyay.base.i18n import language
 from eventyay.base.models import Event
-from eventyay.base.services.mail import SendMailException, mail
+from eventyay.base.services.mail import SendMailException, TolerantDict, _stringify_mail_context, mail
 from eventyay.base.services.tasks import ProfiledEventTask
 from eventyay.celery_app import app
 from i18nfield.strings import LazyI18nString
 
 from .models import TeamMemberApplication, TeamShiftsEmailQueue
-from .services.reminders import send_due_shift_reminders
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,15 @@ class MarkdownBreakString(LazyI18nString):
 
     def __str__(self) -> str:
         return _ensure_markdown_breaks(super().__str__())
+
+
+def render_subject(subject, context, locale, event=None) -> str:
+    with language(locale):
+        rendered = str(subject).format_map(TolerantDict(_stringify_mail_context(context)))
+        prefix = event.settings.get("mail_prefix") if event else None
+        if prefix and prefix.startswith("[") and prefix.endswith("]"):
+            prefix = prefix[1:-1]
+        return f"[{prefix}] {rendered}" if prefix else rendered
 
 
 SCHEDULED_EMAIL_BATCH_SIZE = 50
@@ -59,12 +68,6 @@ def dispatch_scheduled_emails_task():
         if cache.add(cache_key, True, timeout=300):
             send_queued_email.delay(event_id, queue_pk)
             logger.info("[TeamShifts] Dispatched scheduled email queue %s", queue_pk)
-
-
-@app.task(name="teamshifts.send_shift_reminders")
-def send_shift_reminders_task():
-    sent = send_due_shift_reminders()
-    logger.info("[TeamShifts] Sent %s shift reminder emails", sent)
 
 
 @app.task(
@@ -155,7 +158,8 @@ def send_queued_email(self, event_id: int, queue_id: int):
                         sync_send=True,
                     )
                     recipient.error = ""
-                    recipient.save(update_fields=["error"])
+                    recipient.subject = render_subject(subject, context, locale, event)
+                    recipient.save(update_fields=["error", "subject"])
                 except SendMailException as exc:
                     recipient.sent_at = None
                     recipient.error = str(exc)
