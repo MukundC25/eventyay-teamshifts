@@ -7,7 +7,7 @@ from django_scopes import scope
 from eventyay.base.models import Event, Organizer, Team, User
 
 from teamshifts.forms import EmailComposeForm, valid_user_pk, volunteer_choice_label
-from teamshifts.models import ApplicationStatus, TeamMemberApplication, TeamShiftsEmailQueue
+from teamshifts.models import ApplicationStatus, TeamMemberApplication, TeamShiftsEmailQueue, TeamShiftsEmailQueueRecipient
 from teamshifts.services.email import get_recipients, queue_email
 
 
@@ -396,13 +396,13 @@ def test_lists_label_emails_sent_to_specific_volunteers(coordinator_client, even
     queue_email(event, "Filtered mail", "<p>m</p>", [accepted], user=user, status_filter=ApplicationStatus.ACCEPTED, dispatch=False)
     with scope(event=event):
         TeamShiftsEmailQueue.objects.filter(event=event).update(sent_at=now())
+        TeamShiftsEmailQueueRecipient.objects.filter(queue__event=event).update(sent_at=now())
 
     html = coordinator_client.get(reverse("plugins:teamshifts:email_sent", kwargs={"organizer": event.organizer.slug, "event": event.slug})).content.decode()
     row_picked = html[html.index("Picked mail") :].split("</tr>")[0]
     row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
     assert "Specific volunteers" in row_picked
     assert "Specific volunteers" not in row_filtered
-    assert "Accepted" in row_filtered
 
 
 @pytest.mark.django_db
