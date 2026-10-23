@@ -65,6 +65,8 @@ def test_first_change_queues_summary_for_next_send_time(event, cfm, volunteer):
     queue_shift_summary_email(event, volunteer)
     (queue,) = _summary_queues(event)
     assert queue.send_after.astimezone(event.tz).time() == SHIFT_SUMMARY_SEND_TIME
+    assert queue.mail_type == EmailTemplateRoles.SHIFT_SUMMARY
+    assert queue.mail_type_label == "Shift summary"
     assert now() < queue.send_after <= now() + datetime.timedelta(hours=24, minutes=1)
 
 
