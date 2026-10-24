@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("teamshifts", "0029_certificate_manual_generation_default"),
+        ("teamshifts", "0030_teamapplicationquestionoption"),
     ]
 
     operations = [
