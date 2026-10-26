@@ -1,4 +1,3 @@
-import datetime as dt
 import secrets
 from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
@@ -468,7 +467,6 @@ class ShiftAssignment(models.Model):
     def build_ical(self, calendar, creation_time=None, netloc=None):
         shift = self.shift
         event = shift.event
-        creation_time = creation_time or dt.datetime.now(ZoneInfo("UTC"))
         netloc = netloc or urlparse(settings.SITE_URL).netloc
         my_shifts_url = urljoin(settings.SITE_URL, reverse("plugins:teamshifts:my_shifts_global"))
         title = shift.name or (shift.location.name if shift.location_id else str(_("Shift")))
@@ -476,7 +474,7 @@ class ShiftAssignment(models.Model):
 
         vevent = calendar.add("vevent")
         vevent.add("summary").value = f"{title} – {self.role.name}" if self.role_id else title
-        vevent.add("dtstamp").value = creation_time
+        vevent.add("dtstamp").value = (creation_time or self.assigned_at).astimezone(ZoneInfo("UTC"))
         if location:
             vevent.add("location").value = str(location)
         vevent.add("uid").value = f"teamshifts-{event.slug}-{shift.pk}-{self.team_member_id}@{netloc}"

@@ -50,5 +50,5 @@ function initConfirmButton(button) {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-copy-target]").forEach(initCopyButton);
-  document.querySelectorAll(".my-shifts-calendar-reset [data-confirm]").forEach(initConfirmButton);
+  document.querySelectorAll(".call-secret-regenerate [data-confirm]").forEach(initConfirmButton);
 });

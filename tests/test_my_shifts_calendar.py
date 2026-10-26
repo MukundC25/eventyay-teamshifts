@@ -150,12 +150,25 @@ def test_my_shifts_page_shows_calendar_options(client, user, assignment):
     assert "Add this event to calendar" in body
     assert "Download .ics file" in body
     assert "Reset link" in body
-    assert ShiftCalendarToken.objects.get(user=user).token in body
+    token = ShiftCalendarToken.objects.get(user=user).token
+    assert 'value="webcal://' in body
+    assert token in body
 
 
 @pytest.mark.django_db
-def test_feed_unknown_event_is_404(client, assignment, token):
-    assert client.get(feed_url(token.token), {"event": 999999}).status_code == 404
+@pytest.mark.parametrize("event_param", ["999999", "\u00b2"])
+def test_feed_invalid_event_is_404(client, assignment, token, event_param):
+    assert client.get(feed_url(token.token), {"event": event_param}).status_code == 404
+
+
+@pytest.mark.django_db
+def test_feed_is_stable_and_supports_conditional_get(client, assignment, token):
+    first = client.get(feed_url(token.token))
+    second = client.get(feed_url(token.token))
+    assert first.content == second.content
+    assert first["ETag"].startswith('"')
+    not_modified = client.get(feed_url(token.token), HTTP_IF_NONE_MATCH=first["ETag"])
+    assert not_modified.status_code == 304
 
 
 @pytest.mark.django_db

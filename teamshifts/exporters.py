@@ -1,7 +1,5 @@
-import datetime as dt
 from datetime import datetime
 from urllib.parse import urlparse
-from zoneinfo import ZoneInfo
 
 import vobject
 from django.conf import settings
@@ -155,9 +153,8 @@ class MyShiftsICalExporter(BaseExporter):
         netloc = urlparse(settings.SITE_URL).netloc
         cal = vobject.iCalendar()
         cal.add("prodid").value = f"-//pretalx//{netloc}//teamshifts//my-shifts"
-        creation_time = dt.datetime.now(ZoneInfo("UTC"))
 
         for assignment in self.assignments:
-            assignment.build_ical(cal, creation_time=creation_time, netloc=netloc)
+            assignment.build_ical(cal, netloc=netloc)
         file_name = f"{self.event.slug}-my-shifts.ics" if self.event else "my-shifts.ics"
         return file_name, "text/calendar", cal.serialize()

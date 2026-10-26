@@ -17,9 +17,10 @@ from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Max, Prefetch, Q, Sum
 from django.forms import inlineformset_factory
 from django.forms.models import model_to_dict
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotModified, HttpResponseRedirect, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.cache import get_conditional_response, quote_etag
 from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
 from django.utils.html import escape, format_html, strip_tags
@@ -3611,10 +3612,14 @@ def _my_shifts_ics_url(token, event_id=None):
     return urljoin(settings.SITE_URL, path) + _my_shifts_calendar_query(event_id)
 
 
+def _to_webcal_url(url):
+    return urlunparse(("webcal",) + urlparse(url)[1:])
+
+
 def _my_shifts_calendar_links(token, event_id=None):
     query = _my_shifts_calendar_query(event_id)
     return {
-        "feed": _my_shifts_ics_url(token, event_id),
+        "feed": _to_webcal_url(_my_shifts_ics_url(token, event_id)),
         "google": reverse("plugins:teamshifts:my_shifts_calendar_google") + query,
         "webcal": reverse("plugins:teamshifts:my_shifts_calendar_webcal") + query,
         "download": reverse("plugins:teamshifts:my_shifts_calendar_download") + query,
@@ -3625,7 +3630,7 @@ def _get_calendar_event_id(request):
     raw = request.GET.get("event")
     if raw is None:
         return None
-    if not raw.isdigit():
+    if not (raw.isascii() and raw.isdigit()):
         raise Http404
     with scopes_disabled():
         if not Event.objects.filter(pk=raw, plugins__contains="teamshifts").exists():
@@ -3638,14 +3643,13 @@ def _my_shifts_calendar_response(request, user, event_id):
         event = Event.objects.filter(pk=event_id).first() if event_id is not None else None
     exporter = MyShiftsICalExporter(event, get_member_assignments(user, event_id))
     file_name, file_type, data = exporter.render(request=request)
-    etag = hashlib.sha1(str(data).encode()).hexdigest()
-    if request.headers.get("If-None-Match") == etag:
-        return HttpResponseNotModified()
+    etag = quote_etag(hashlib.sha1(str(data).encode()).hexdigest())
     headers = {
-        "ETag": f'"{etag}"',
+        "ETag": etag,
         "Content-Disposition": f'attachment; filename="{safe_filename(file_name)}"',
     }
-    return HttpResponse(data, content_type=file_type, headers=headers)
+    response = HttpResponse(data, content_type=file_type, headers=headers)
+    return get_conditional_response(request, etag=etag, response=response)
 
 
 class MyShiftsCalendarDownloadView(LoginRequiredMixin, View):
@@ -3672,10 +3676,8 @@ class MyShiftsCalendarRedirectView(LoginRequiredMixin, View):
             google_url = f"https://calendar.google.com/calendar/r?{urlencode({'cid': ics_url.replace('https://', 'http://')})}"
             return HttpResponseRedirect(google_url)
 
-        parsed = urlparse(ics_url)
-        webcal_url = urlunparse(("webcal",) + parsed[1:])
         response = HttpResponse(status=302)
-        response["Location"] = webcal_url
+        response["Location"] = _to_webcal_url(ics_url)
         return response
 
 
