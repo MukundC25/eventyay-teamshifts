@@ -3673,7 +3673,7 @@ class MyShiftsCalendarRedirectView(LoginRequiredMixin, View):
         ics_url = _my_shifts_ics_url(token.token, _get_calendar_event_id(request))
 
         if is_google:
-            google_url = f"https://calendar.google.com/calendar/r?{urlencode({'cid': ics_url.replace('https://', 'http://')})}"
+            google_url = f"https://calendar.google.com/calendar/r?{urlencode({'cid': ics_url})}"
             return HttpResponseRedirect(google_url)
 
         response = HttpResponse(status=302)

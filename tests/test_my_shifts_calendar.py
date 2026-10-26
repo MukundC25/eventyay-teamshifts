@@ -1,4 +1,7 @@
+from urllib.parse import parse_qs, urljoin, urlparse
+
 import pytest
+from django.conf import settings
 from django.urls import reverse
 from django.utils.timezone import now, timedelta
 from django_scopes import scopes_disabled
@@ -176,8 +179,9 @@ def test_calendar_redirects_follow_core(client, user, event, assignment, token):
     client.force_login(user)
     google = client.get(reverse("plugins:teamshifts:my_shifts_calendar_google"), {"event": event.pk})
     assert google.status_code == 302
-    assert google["Location"].startswith("https://calendar.google.com/calendar/r?cid=http")
-    assert token.token in google["Location"]
+    google_target = parse_qs(urlparse(google["Location"]).query)["cid"][0]
+    assert google["Location"].startswith("https://calendar.google.com/calendar/r?")
+    assert google_target == urljoin(settings.SITE_URL, feed_url(token.token)) + f"?event={event.pk}"
     webcal = client.get(reverse("plugins:teamshifts:my_shifts_calendar_webcal"))
     assert webcal.status_code == 302
     assert webcal["Location"].startswith("webcal://")
