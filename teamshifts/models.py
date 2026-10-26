@@ -1,13 +1,18 @@
+import datetime as dt
 import secrets
+from urllib.parse import urljoin, urlparse
+from zoneinfo import ZoneInfo
 
-from django.core.exceptions import ValidationError
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.utils.translation import gettext_lazy as _
 from django_scopes import ScopedManager, scope, scopes_disabled
 from eventyay.base.models import Voucher
-from i18nfield.fields import I18nTextField
+from i18nfield.fields import I18nCharField, I18nTextField
 
 
 def generate_cfm_secret():
@@ -336,6 +341,11 @@ class TeamMemberApplication(models.Model):
         verbose_name=_("Added by organizer"),
         help_text=_("Whether this member was added directly by an organizer instead of applying through the public Call for Team Members."),
     )
+    shift_action_emails = models.BooleanField(
+        default=True,
+        verbose_name=_("Email on shift sign-up and drop"),
+        help_text=_("Whether the member gets an email when they sign up for or drop a shift on the shift schedule."),
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Applied At"))
     updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated At"))
 
@@ -348,6 +358,13 @@ class TeamMemberApplication(models.Model):
 
     def __str__(self):
         return f"{self.user.email} ({self.get_status_display()})"
+
+    @property
+    def certificate_status(self) -> "CertificateStatus":
+        try:
+            return self.certificate.status
+        except ObjectDoesNotExist:
+            return CertificateStatus.NOT_GENERATED
 
 
 class Shift(models.Model):
@@ -448,6 +465,27 @@ class ShiftAssignment(models.Model):
     def __str__(self):
         return f"{self.team_member.email} → {self.shift}"
 
+    def build_ical(self, calendar, creation_time=None, netloc=None):
+        shift = self.shift
+        event = shift.event
+        creation_time = creation_time or dt.datetime.now(ZoneInfo("UTC"))
+        netloc = netloc or urlparse(settings.SITE_URL).netloc
+        my_shifts_url = urljoin(settings.SITE_URL, reverse("plugins:teamshifts:my_shifts_global"))
+        title = shift.name or (shift.location.name if shift.location_id else str(_("Shift")))
+        location = shift.location.name if shift.location_id else shift.location_text
+
+        vevent = calendar.add("vevent")
+        vevent.add("summary").value = f"{title} – {self.role.name}" if self.role_id else title
+        vevent.add("dtstamp").value = creation_time
+        if location:
+            vevent.add("location").value = str(location)
+        vevent.add("uid").value = f"teamshifts-{event.slug}-{shift.pk}-{self.team_member_id}@{netloc}"
+
+        vevent.add("dtstart").value = shift.start_time.astimezone(event.tz)
+        vevent.add("dtend").value = shift.end_time.astimezone(event.tz)
+        vevent.add("description").value = f"{event.name}\n{my_shifts_url}"
+        vevent.add("url").value = my_shifts_url
+
 
 class ShiftCalendarToken(models.Model):
     user = models.OneToOneField(
@@ -507,11 +545,6 @@ class TeamApplicationQuestion(models.Model):
         verbose_name=_("Field type"),
     )
     required = models.BooleanField(default=False, verbose_name=_("Required"))
-    options = models.TextField(
-        blank=True,
-        verbose_name=_("Options"),
-        help_text=_("One option per line. Only used for choice / multiple choice fields."),
-    )
     active = models.BooleanField(default=True, verbose_name=_("Active"))
 
     objects = ScopedManager(event="event")
@@ -526,10 +559,30 @@ class TeamApplicationQuestion(models.Model):
         needs_options = (QuestionVariant.CHOICES, QuestionVariant.CHOICES_DROPDOWN, QuestionVariant.MULTIPLE)
         if self.variant not in needs_options:
             return []
-        return [line.strip() for line in (self.options or "").splitlines() if line.strip()]
+        return [str(option.answer) for option in self.option_records.all()]
 
     def __str__(self):
         return f"{self.question} ({self.get_variant_display()})"
+
+
+class TeamApplicationQuestionOption(models.Model):
+    question = models.ForeignKey(
+        "TeamApplicationQuestion",
+        related_name="option_records",
+        on_delete=models.CASCADE,
+    )
+    answer = I18nCharField(verbose_name=_("Answer"))
+    position = models.IntegerField(default=0)
+
+    objects = ScopedManager(event="question__event")
+
+    def __str__(self):
+        return str(self.answer)
+
+    class Meta:
+        verbose_name = _("Application question option")
+        verbose_name_plural = _("Application question options")
+        ordering = ("position", "id")
 
 
 class TeamApplicationAnswer(models.Model):
@@ -562,6 +615,35 @@ class TeamApplicationAnswer(models.Model):
 
     def __str__(self):
         return f"{self.application} → {self.question}: {self.answer[:30]}"
+
+
+class EmailTemplateRoles(models.TextChoices):
+    APPLICATION_RECEIVED = "teamshifts.application.received", _("Application received")
+    APPLICATION_ACCEPTED = "teamshifts.application.accepted", _("Application accepted")
+    APPLICATION_REJECTED = "teamshifts.application.rejected", _("Application rejected")
+    NEW_APPLICATION_ORGANIZER = "teamshifts.application.organizer", _("New application (organizer notification)")
+    MEMBER_ADDED_BY_ORGANIZER = "teamshifts.member.added_by_organizer", _("Added as volunteer by organizer")
+    SHIFT_ASSIGNED_BY_ORGANIZER = "teamshifts.shift.assigned_by_organizer", _("Shift assigned by organizer")
+    SHIFT_CLAIMED_BY_VOLUNTEER = "teamshifts.shift.claimed_by_volunteer", _("Shift sign-up confirmation")
+    SHIFT_DROPPED_BY_VOLUNTEER = "teamshifts.shift.dropped_by_volunteer", _("Shift drop confirmation")
+    SHIFT_DROPPED_ORGANIZER = "teamshifts.shift.dropped_organizer", _("Shift dropped (organizer notification)")
+    VOUCHER_SENT = "teamshifts.voucher.sent", _("Voucher sent to volunteer")
+    CERTIFICATE_GENERATED = "teamshifts.certificate.generated", _("Certificate of participation generated")
+
+
+EMAIL_TYPE_LABELS = {
+    EmailTemplateRoles.APPLICATION_RECEIVED: _("Application received"),
+    EmailTemplateRoles.APPLICATION_ACCEPTED: _("Application accepted"),
+    EmailTemplateRoles.APPLICATION_REJECTED: _("Application rejected"),
+    EmailTemplateRoles.NEW_APPLICATION_ORGANIZER: _("Organizer notification"),
+    EmailTemplateRoles.MEMBER_ADDED_BY_ORGANIZER: _("Added by organizer"),
+    EmailTemplateRoles.SHIFT_ASSIGNED_BY_ORGANIZER: _("Shift assigned"),
+    EmailTemplateRoles.SHIFT_CLAIMED_BY_VOLUNTEER: _("Shift sign-up"),
+    EmailTemplateRoles.SHIFT_DROPPED_BY_VOLUNTEER: _("Shift dropped"),
+    EmailTemplateRoles.SHIFT_DROPPED_ORGANIZER: _("Organizer notification"),
+    EmailTemplateRoles.VOUCHER_SENT: _("Voucher"),
+    EmailTemplateRoles.CERTIFICATE_GENERATED: _("Certificate"),
+}
 
 
 class TeamShiftsEmailQueue(models.Model):
@@ -609,8 +691,14 @@ class TeamShiftsEmailQueue(models.Model):
         blank=True,
         default="",
     )
+    mail_type = models.CharField(max_length=40, blank=True, default="")
     send_after = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    is_draft = models.BooleanField(
+        default=False,
+        verbose_name=_("Draft"),
+        help_text=_("Drafts are kept out of the outbox and are never sent until they are moved there."),
+    )
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
@@ -622,8 +710,14 @@ class TeamShiftsEmailQueue(models.Model):
         ordering = ["-created"]
 
     def __str__(self):
+        if self.is_draft:
+            return f"{self.event.slug} · draft · {self.subject}"
         state = "sent" if self.sent_at else ("scheduled" if self.send_after else "pending")
         return f"{self.event.slug} · {state} · {self.subject}"
+
+    @property
+    def mail_type_label(self):
+        return EMAIL_TYPE_LABELS.get(self.mail_type, _("Custom"))
 
 
 class TeamShiftsEmailQueueRecipient(models.Model):
@@ -640,6 +734,7 @@ class TeamShiftsEmailQueueRecipient(models.Model):
         related_name="+",
     )
     email = models.EmailField()
+    subject = models.TextField(blank=True, default="")
     sent_at = models.DateTimeField(null=True, blank=True)
     error = models.TextField(blank=True, default="")
 
@@ -653,17 +748,9 @@ class TeamShiftsEmailQueueRecipient(models.Model):
     def __str__(self):
         return f"{self.email} ({'sent' if self.sent_at else 'pending'})"
 
-
-class EmailTemplateRoles(models.TextChoices):
-    APPLICATION_RECEIVED = "teamshifts.application.received", _("Application received")
-    APPLICATION_ACCEPTED = "teamshifts.application.accepted", _("Application accepted")
-    APPLICATION_REJECTED = "teamshifts.application.rejected", _("Application rejected")
-    NEW_APPLICATION_ORGANIZER = "teamshifts.application.organizer", _("New application (organizer notification)")
-    MEMBER_ADDED_BY_ORGANIZER = "teamshifts.member.added_by_organizer", _("Added as volunteer by organizer")
-    SHIFT_ASSIGNED_BY_ORGANIZER = "teamshifts.shift.assigned_by_organizer", _("Shift assigned by organizer")
-    SHIFT_CLAIMED_BY_VOLUNTEER = "teamshifts.shift.claimed_by_volunteer", _("Shift sign-up confirmation")
-    VOUCHER_SENT = "teamshifts.voucher.sent", _("Voucher sent to volunteer")
-    CERTIFICATE_GENERATED = "teamshifts.certificate.generated", _("Certificate of participation generated")
+    @property
+    def display_subject(self):
+        return self.subject or str(self.queue.subject)
 
 
 class TeamShiftsEmailTemplate(models.Model):
@@ -722,6 +809,22 @@ class CertificateTrigger(models.TextChoices):
     MANUAL = "manual", _("Manually")
 
 
+class CertificateStatus(models.TextChoices):
+    NOT_GENERATED = "not_generated", _("Not generated")
+    GENERATED = "generated", _("Generated — not sent")
+    SENT = "sent", _("Sent — not downloaded")
+    DOWNLOADED = "downloaded", _("Downloaded")
+
+    @property
+    def label_class(self) -> str:
+        return {
+            CertificateStatus.NOT_GENERATED: "label-default",
+            CertificateStatus.GENERATED: "label-warning",
+            CertificateStatus.SENT: "label-info",
+            CertificateStatus.DOWNLOADED: "label-success",
+        }[self]
+
+
 def certificate_background_name(instance, filename: str) -> str:
     secret = get_random_string(16)
     return f"pub/{instance.event.organizer.slug}/{instance.event.slug}/teamshifts/certificates/bg-{instance.pk}-{secret}.pdf"
@@ -759,8 +862,21 @@ class CertificateSettings(models.Model):
     trigger = models.CharField(
         max_length=8,
         choices=CertificateTrigger.choices,
-        default=CertificateTrigger.AUTO,
+        default=CertificateTrigger.MANUAL,
         verbose_name=_("Certificate generation trigger"),
+    )
+    require_after_event_end = models.BooleanField(
+        default=False,
+        verbose_name=_("Only after the event has ended"),
+    )
+    after_event_end_issuing_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Automatic issuing after the event enabled at"),
+        help_text=_(
+            "Set when automatic generation and the after-event-end condition are both switched on. "
+            "Certificates are only issued at the end of the event if this was set before the event ended."
+        ),
     )
     layout = models.TextField(blank=True)
     background = models.FileField(null=True, blank=True, upload_to=certificate_background_name, max_length=255)
@@ -774,6 +890,10 @@ class CertificateSettings(models.Model):
 
     def __str__(self):
         return f"Certificates ({self.event.slug})"
+
+    @property
+    def issues_after_event_end(self) -> bool:
+        return self.trigger == CertificateTrigger.AUTO and self.require_after_event_end
 
 
 class MemberCertificate(models.Model):
@@ -789,7 +909,7 @@ class MemberCertificate(models.Model):
         null=True,
         blank=True,
         verbose_name=_("Notified at"),
-        help_text=_("Timestamp of the first certificate email notification. Null means no notification has been sent yet."),
+        help_text=_("Timestamp of the latest certificate email notification. Null means no notification has been sent yet."),
     )
 
     objects = ScopedManager(event="application__event")
@@ -800,6 +920,16 @@ class MemberCertificate(models.Model):
 
     def __str__(self):
         return f"Certificate for {self.application}"
+
+    @property
+    def status(self) -> str:
+        if self.downloaded_at:
+            return CertificateStatus.DOWNLOADED
+        if self.notified_at:
+            return CertificateStatus.SENT
+        if self.file:
+            return CertificateStatus.GENERATED
+        return CertificateStatus.NOT_GENERATED
 
 
 class VoucherStatus(models.TextChoices):
@@ -840,7 +970,7 @@ class VolunteerVoucherSettings(models.Model):
         if not self.voucher_tag:
             return Voucher.objects.none()
         assigned_voucher_ids = MemberVoucher.objects.filter(
-            application__event=self.event,
+            event=self.event,
         ).values_list("voucher_id", flat=True)
         with scopes_disabled():
             return Voucher.objects.filter(
@@ -860,9 +990,18 @@ class VolunteerVoucherSettings(models.Model):
 
 
 class MemberVoucher(models.Model):
+    event = models.ForeignKey(
+        "base.Event",
+        on_delete=models.CASCADE,
+        related_name="teamshifts_member_vouchers",
+    )
+    # Kept (with application=NULL) when the application is deleted, so a code that
+    # was already emailed is never handed to another member.
     application = models.OneToOneField(
         TeamMemberApplication,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="voucher_assignment",
     )
     voucher = models.OneToOneField(
@@ -883,13 +1022,15 @@ class MemberVoucher(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
-    objects = ScopedManager(event="application__event")
+    objects = ScopedManager(event="event")
 
     class Meta:
         verbose_name = _("Member voucher")
         verbose_name_plural = _("Member vouchers")
 
     def __str__(self):
+        if self.application is None:
+            return f"(deleted member) → {self.voucher.code}"
         return f"{self.application.user.email} → {self.voucher.code}"
 
     def refresh_claimed_status(self) -> bool:

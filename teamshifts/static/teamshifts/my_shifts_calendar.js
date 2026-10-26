@@ -15,15 +15,20 @@ function initCopyButton(button) {
   const originalIconClass = originalIcon ? originalIcon.className : "fa fa-copy";
   const originalLabel = button.textContent.trim();
 
-  const done = () => {
-    renderButton(button, "fa fa-check", button.dataset.copiedLabel || originalLabel);
+  const showResult = (iconClass, label) => {
+    renderButton(button, iconClass, label || originalLabel);
     window.setTimeout(() => renderButton(button, originalIconClass, originalLabel), 1500);
   };
+  const done = () => showResult("fa fa-check", button.dataset.copiedLabel);
+  const failed = () => showResult("fa fa-times", button.dataset.copyFailedLabel);
   const fallback = () => {
     input.select();
     input.setSelectionRange(0, input.value.length);
-    document.execCommand("copy");
-    done();
+    if (document.execCommand("copy")) {
+      done();
+    } else {
+      failed();
+    }
   };
 
   button.addEventListener("click", () => {

@@ -151,3 +151,21 @@ def test_my_shifts_page_shows_calendar_options(client, user, assignment):
     assert "Download .ics file" in body
     assert "Reset link" in body
     assert ShiftCalendarToken.objects.get(user=user).token in body
+
+
+@pytest.mark.django_db
+def test_feed_unknown_event_is_404(client, assignment, token):
+    assert client.get(feed_url(token.token), {"event": 999999}).status_code == 404
+
+
+@pytest.mark.django_db
+def test_calendar_redirects_follow_core(client, user, event, assignment, token):
+    client.force_login(user)
+    google = client.get(reverse("plugins:teamshifts:my_shifts_calendar_google"), {"event": event.pk})
+    assert google.status_code == 302
+    assert google["Location"].startswith("https://calendar.google.com/calendar/r?cid=http")
+    assert token.token in google["Location"]
+    webcal = client.get(reverse("plugins:teamshifts:my_shifts_calendar_webcal"))
+    assert webcal.status_code == 302
+    assert webcal["Location"].startswith("webcal://")
+    assert webcal["Location"].endswith(f"{token.token}.ics")
