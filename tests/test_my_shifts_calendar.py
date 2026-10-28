@@ -1,3 +1,4 @@
+import json
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import pytest
@@ -7,7 +8,15 @@ from django.utils.timezone import now, timedelta
 from django_scopes import scopes_disabled
 from eventyay.base.models import Event, Organizer, User
 
-from teamshifts.models import Shift, ShiftAssignment, ShiftCalendarToken, TeamRole
+from teamshifts.models import (
+    ApplicationStatus,
+    CallForTeamMembers,
+    Shift,
+    ShiftAssignment,
+    ShiftCalendarToken,
+    TeamMemberApplication,
+    TeamRole,
+)
 
 
 @pytest.fixture
@@ -186,3 +195,17 @@ def test_calendar_redirects_follow_core(client, user, event, assignment, token):
     assert webcal.status_code == 302
     assert webcal["Location"].startswith("webcal://")
     assert webcal["Location"].endswith(f"{token.token}.ics")
+
+
+@pytest.mark.django_db
+def test_shift_schedule_toolbar_offers_my_shifts_calendar(client, user, event, assignment):
+    CallForTeamMembers.objects.create(event=event, title="Join", active=True, shift_schedule_published=True)
+    TeamMemberApplication.objects.create(event=event, user=user, status=ApplicationStatus.ACCEPTED)
+    client.force_login(user)
+    response = client.get(reverse("plugins:teamshifts:public_shift_schedule", kwargs={"organizer": event.organizer.slug, "event": event.slug}))
+    assert response.status_code == 200
+    exporters = json.loads(response.context["schedule_meta_json"])["exporters"]
+    assert [exporter["identifier"] for exporter in exporters] == ["my-google-calendar", "my-webcal", "my-shifts.ics"]
+    assert all(exporter["export_url"].endswith(f"?event={event.pk}") for exporter in exporters)
+    assert all("<svg" in exporter["qrcode_svg"] for exporter in exporters)
+    assert b'id="pretalx-schedule-meta"' in response.content
