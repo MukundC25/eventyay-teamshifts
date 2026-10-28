@@ -200,14 +200,6 @@ label .optional {
 }
 
 
-.my-shifts-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .my-shifts-calendar-collapse {
   overflow: hidden;
 }

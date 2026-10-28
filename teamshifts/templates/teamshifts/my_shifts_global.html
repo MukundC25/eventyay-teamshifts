@@ -15,14 +15,48 @@
 {% endblock %}
 
 {% block content %}
-<div class="my-shifts-page-header">
-  <h1>{% translate "My Shifts" %}</h1>
-  <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#my-shifts-calendar-panel"
+<h1>{% translate "My Shifts" %}</h1>
+
+<div class="advanced-filter-search" data-advanced-filter-search>
+  <form class="filter-form advanced-filter-search-form" action="" method="get">
+    <div class="advanced-filter-search-bar">
+      <div class="input-group advanced-filter-search-query-group">
+        <input id="id_search" type="text" name="search" class="form-control"
+               placeholder="{% translate 'Search shifts…' %}"
+               aria-label="{% translate 'Search shifts…' %}"
+               value="{{ filter_form.search.value|default_if_none:'' }}">
+        <span class="input-group-btn">
+          <button class="btn btn-primary" type="submit">
+            <span class="fa fa-search" aria-hidden="true"></span>
+            {% translate "Search" %}
+          </button>
+        </span>
+      </div>
+      <div class="advanced-filter-field advanced-filter-field--inline">
+        {% bootstrap_field filter_form.event layout='inline' %}
+      </div>
+      <div class="advanced-filter-search-actions">
+        <button class="btn btn-primary" type="submit">
+          <span class="fa fa-filter" aria-hidden="true"></span>
+          {% translate "Filter" %}
+        </button>
+        <a href="{{ request.path }}" class="btn btn-default btn-clear-filter"
+           aria-label="{% translate 'Clear filters' %}" title="{% translate 'Clear filters' %}">
+          <span class="fa fa-eraser" aria-hidden="true"></span>
+          <span class="sr-only">{% translate "Clear filters" %}</span>
+        </a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<p>
+  <button type="button" class="btn btn-default" data-toggle="collapse" data-target="#my-shifts-calendar-panel"
           aria-expanded="false" aria-controls="my-shifts-calendar-panel">
     <i class="fa fa-calendar-plus-o"></i>
     {% translate "Add to calendar" %}
   </button>
-</div>
+</p>
 
 <div id="my-shifts-calendar-panel" class="collapse my-shifts-calendar-collapse">
   <div class="panel panel-default call-secret-panel">
@@ -73,39 +107,6 @@
   </div>
 </div>
 
-<div class="advanced-filter-search" data-advanced-filter-search>
-  <form class="filter-form advanced-filter-search-form" action="" method="get">
-    <div class="advanced-filter-search-bar">
-      <div class="input-group advanced-filter-search-query-group">
-        <input id="id_search" type="text" name="search" class="form-control"
-               placeholder="{% translate 'Search shifts…' %}"
-               aria-label="{% translate 'Search shifts…' %}"
-               value="{{ filter_form.search.value|default_if_none:'' }}">
-        <span class="input-group-btn">
-          <button class="btn btn-primary" type="submit">
-            <span class="fa fa-search" aria-hidden="true"></span>
-            {% translate "Search" %}
-          </button>
-        </span>
-      </div>
-      <div class="advanced-filter-field advanced-filter-field--inline">
-        {% bootstrap_field filter_form.event layout='inline' %}
-      </div>
-      <div class="advanced-filter-search-actions">
-        <button class="btn btn-primary" type="submit">
-          <span class="fa fa-filter" aria-hidden="true"></span>
-          {% translate "Filter" %}
-        </button>
-        <a href="{{ request.path }}" class="btn btn-default btn-clear-filter"
-           aria-label="{% translate 'Clear filters' %}" title="{% translate 'Clear filters' %}">
-          <span class="fa fa-eraser" aria-hidden="true"></span>
-          <span class="sr-only">{% translate "Clear filters" %}</span>
-        </a>
-      </div>
-    </div>
-  </form>
-</div>
-
 {% if not shifts_by_event %}
   <div class="alert alert-info">
     <i class="fa fa-info-circle"></i>
@@ -131,7 +132,7 @@
                 <button type="button" class="btn btn-xs btn-default dropdown-toggle" data-toggle="dropdown"
                         aria-haspopup="true" aria-expanded="false">
                   <i class="fa fa-calendar-plus-o"></i>
-                  {% translate "Add this event to calendar" %}
+                  {% translate "Add these shifts to calendar" %}
                   <span class="caret"></span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-right">

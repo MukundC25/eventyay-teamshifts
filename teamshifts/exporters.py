@@ -166,7 +166,7 @@ class MyShiftsICalExporter(BaseExporter):
     def render(self, **kwargs):
         netloc = urlparse(settings.SITE_URL).netloc
         cal = vobject.iCalendar()
-        cal.add("prodid").value = f"-//pretalx//{netloc}//teamshifts//my-shifts"
+        cal.add("prodid").value = f"-//eventyay//{netloc}//teamshifts//my-shifts"
 
         for assignment in self.assignments:
             assignment.build_ical(cal, netloc=netloc)

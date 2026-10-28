@@ -159,7 +159,7 @@ def test_my_shifts_page_shows_calendar_options(client, user, assignment):
     assert response.status_code == 200
     body = response.content.decode()
     assert "Add to calendar" in body
-    assert "Add this event to calendar" in body
+    assert "Add these shifts to calendar" in body
     assert "Download .ics file" in body
     assert "Reset link" in body
     token = ShiftCalendarToken.objects.get(user=user).token
