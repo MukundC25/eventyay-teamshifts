@@ -592,8 +592,8 @@ class EmailComposeForm(forms.Form):
             queryset=User.objects.filter(team_member_applications__event=event),
             required=False,
             show_email=show_emails,
-            label=_("Send to specific volunteers"),
-            help_text=_("Optional. When volunteers are selected here, only they receive the email and the status filter is ignored."),
+            label=_("Send to specific people"),
+            help_text=_("Optional. When people are selected here, only they receive the email and the status filter is ignored."),
             widget=VolunteerSelect2Multiple(
                 attrs={
                     "data-model-select2": "generic",

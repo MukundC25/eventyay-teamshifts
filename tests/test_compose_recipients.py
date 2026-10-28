@@ -188,7 +188,7 @@ def test_select2_endpoint_requires_a_team_member(client, event, user, accepted, 
 def test_compose_page_renders_the_volunteer_picker(coordinator_client, event):
     html = coordinator_client.get(_compose_url(event)).content.decode()
 
-    assert "Send to specific volunteers" in html
+    assert "Send to specific people" in html
     assert 'data-model-select2="generic"' in html
     assert _select2_url(event) in html
     assert "data-compose-status" in html
@@ -401,8 +401,8 @@ def test_lists_label_emails_sent_to_specific_volunteers(coordinator_client, even
     html = coordinator_client.get(reverse("plugins:teamshifts:email_sent", kwargs={"organizer": event.organizer.slug, "event": event.slug})).content.decode()
     row_picked = html[html.index("Picked mail") :].split("</tr>")[0]
     row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
-    assert "Specific volunteers" in row_picked
-    assert "Specific volunteers" not in row_filtered
+    assert "Specific people" in row_picked
+    assert "Specific people" not in row_filtered
 
 
 @pytest.mark.django_db
@@ -414,8 +414,8 @@ def test_outbox_labels_emails_sent_to_specific_volunteers(coordinator_client, ev
 
     row_picked = html[html.index("Picked mail") :].split("</tr>")[0]
     row_filtered = html[html.index("Filtered mail") :].split("</tr>")[0]
-    assert "Specific volunteers" in row_picked
-    assert "Specific volunteers" not in row_filtered
+    assert "Specific people" in row_picked
+    assert "Specific people" not in row_filtered
 
 
 def _save_draft(client, event, **data):
@@ -500,7 +500,7 @@ def test_drafts_list_labels_drafts_for_chosen_volunteers(coordinator_client, eve
 
     row_picked = html[html.index("Picked draft") :].split("</tr>")[0]
     row_everyone = html[html.index("Everyone draft") :].split("</tr>")[0]
-    assert "Specific volunteers" in row_picked
+    assert "Specific people" in row_picked
     assert "All statuses" not in row_picked
-    assert "Specific volunteers" not in row_everyone
+    assert "Specific people" not in row_everyone
     assert "All statuses" in row_everyone

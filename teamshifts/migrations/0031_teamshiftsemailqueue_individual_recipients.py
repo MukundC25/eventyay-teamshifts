@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
             model_name="teamshiftsemailqueue",
             name="individual_recipients",
             field=models.BooleanField(
-                default=False, help_text="Sent to hand-picked volunteers instead of everyone matching the status filter.", verbose_name="Specific volunteers"
+                default=False, help_text="Sent to hand-picked people instead of everyone matching the status filter.", verbose_name="Specific people"
             ),
         ),
     ]
