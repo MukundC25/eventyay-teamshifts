@@ -156,7 +156,7 @@ SHIFT_DROPPED_ORGANIZER_TEXT = LazyI18nString.from_gettext(
     )
 )
 
-SHIFT_REMINDER_SUBJECT = LazyI18nString.from_gettext(_("Reminder: your shifts tomorrow at {event_name}"))
+SHIFT_REMINDER_SUBJECT = LazyI18nString.from_gettext(_("Reminder: your shift overview for {event_name}"))
 SHIFT_REMINDER_TEXT = LazyI18nString.from_gettext(
     _(
         "Hi {full_name},\n\n"
