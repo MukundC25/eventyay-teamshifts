@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0001_initial"),
-        ("teamshifts", "0030_teamapplicationquestionoption"),
+        ("teamshifts", "0031_shiftcalendartoken"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
