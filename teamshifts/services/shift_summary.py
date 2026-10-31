@@ -4,14 +4,9 @@ from django.utils.translation import gettext as _
 from django_scopes import scope
 from eventyay.base.i18n import language
 from eventyay.base.models import Event, User
-from eventyay.helpers.urls import build_absolute_uri as build_global_uri
 from eventyay.multidomain.urlreverse import build_absolute_uri
 
 from ..models import Shift, ShiftAssignment
-
-
-def my_shifts_url() -> str:
-    return build_global_uri("plugins:teamshifts:my_shifts_global")
 
 
 def has_shifts(event: Event, user: User) -> bool:

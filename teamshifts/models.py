@@ -514,6 +514,33 @@ class ShiftCalendarToken(models.Model):
         self.save(update_fields=["token", "regenerated_at"])
 
 
+class ShiftReminder(models.Model):
+    event = models.ForeignKey(
+        "base.Event",
+        on_delete=models.CASCADE,
+        related_name="teamshifts_shift_reminders",
+    )
+    user = models.ForeignKey(
+        "base.User",
+        on_delete=models.CASCADE,
+        related_name="teamshifts_shift_reminders",
+    )
+    day = models.DateField(help_text=_("Event-local date of the shifts this reminder covered."))
+    claimed_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveSmallIntegerField(default=1)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    objects = ScopedManager(event="event")
+
+    class Meta:
+        verbose_name = _("Shift reminder")
+        verbose_name_plural = _("Shift reminders")
+        unique_together = ("event", "user", "day")
+
+    def __str__(self):
+        return f"{self.user.email} · {self.day}"
+
+
 class QuestionVariant(models.TextChoices):
     STRING = "string", _("Text (one line)")
     TEXT = "text", _("Multi-line text")
@@ -630,6 +657,7 @@ class EmailTemplateRoles(models.TextChoices):
     SHIFT_SUMMARY = "teamshifts.shift.summary", _("Daily shift summary")
     VOUCHER_SENT = "teamshifts.voucher.sent", _("Voucher sent to volunteer")
     CERTIFICATE_GENERATED = "teamshifts.certificate.generated", _("Certificate of participation generated")
+    SHIFT_REMINDER = "teamshifts.shift.reminder", _("Shift reminder (24 hours before)")
 
 
 EMAIL_TYPE_LABELS = {
@@ -646,6 +674,7 @@ EMAIL_TYPE_LABELS = {
     EmailTemplateRoles.SHIFT_SUMMARY: _("Shift summary"),
     EmailTemplateRoles.VOUCHER_SENT: _("Voucher"),
     EmailTemplateRoles.CERTIFICATE_GENERATED: _("Certificate"),
+    EmailTemplateRoles.SHIFT_REMINDER: _("Shift reminder"),
 }
 
 
@@ -771,6 +800,7 @@ class TeamShiftsEmailTemplate(models.Model):
     role = models.CharField(max_length=40, choices=EmailTemplateRoles.choices)
     subject = I18nTextField()
     body = I18nTextField()
+    send_automatically = models.BooleanField(default=True, db_default=True, verbose_name=_("Send automatically"))
     updated = models.DateTimeField(auto_now=True)
 
     objects = ScopedManager(event="event")
