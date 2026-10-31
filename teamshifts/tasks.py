@@ -14,7 +14,7 @@ from eventyay.base.services.tasks import ProfiledEventTask
 from eventyay.celery_app import app
 from i18nfield.strings import LazyI18nString
 
-from .models import CallForTeamMembers, TeamMemberApplication, TeamShiftsEmailQueue
+from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication, TeamShiftsEmailQueue
 from .services.shift_summary import build_shift_summary, has_shifts
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,11 @@ def render_subject(subject, context, locale, event=None) -> str:
 
 
 SCHEDULED_EMAIL_BATCH_SIZE = 50
+
+
+def _summary_recipient_removed(event: Event, queue) -> bool:
+    user_ids = list(queue.recipients.exclude(user=None).values_list("user_id", flat=True))
+    return TeamMemberApplication.objects.filter(event=event, user_id__in=user_ids, status=ApplicationStatus.REMOVED).exists()
 
 
 def _shift_schedule_published(event: Event) -> bool:
@@ -114,6 +119,10 @@ def send_queued_email(self, event_id: int, queue_id: int):
                 return
             if queue.is_shift_summary and not _shift_schedule_published(event):
                 logger.info("[TeamShifts] Dropping shift summary queue %s: shift schedule is no longer published", queue_id)
+                queue.delete()
+                return
+            if queue.is_shift_summary and _summary_recipient_removed(event, queue):
+                logger.info("[TeamShifts] Dropping shift summary queue %s: the volunteer was removed from the team", queue_id)
                 queue.delete()
                 return
             recipients = list(queue.recipients.select_related("user").all())

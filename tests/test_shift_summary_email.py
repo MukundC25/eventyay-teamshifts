@@ -138,6 +138,18 @@ def test_nothing_is_sent_while_schedule_is_unpublished(event, cfm, volunteer):
 
 
 @pytest.mark.django_db
+def test_summary_is_dropped_for_a_member_removed_before_sending(event, cfm, volunteer, application):
+    queue = queue_shift_summary_email(event, volunteer)
+    with scope(event=event):
+        TeamShiftsEmailQueue.objects.filter(pk=queue.pk).update(send_after=now() - datetime.timedelta(minutes=1))
+        TeamMemberApplication.objects.filter(pk=application.pk).update(status=ApplicationStatus.REMOVED)
+    with patch("teamshifts.tasks.mail") as mock_mail:
+        send_queued_email.run(event_id=event.pk, queue_id=queue.pk)
+    mock_mail.assert_not_called()
+    assert _summary_queues(event) == []
+
+
+@pytest.mark.django_db
 def test_summary_lists_current_shifts_sorted_or_links_to_schedule(event, cfm, volunteer, role):
     base = now() + datetime.timedelta(days=3)
     late = _shift(event, "Teardown", base + datetime.timedelta(days=1))
