@@ -75,7 +75,6 @@ from .models import (
     MemberVoucher,
     Shift,
     ShiftAssignment,
-    ShiftCalendarToken,
     ShiftLocation,
     ShiftRoleAssignment,
     TeamApplicationAnswer,

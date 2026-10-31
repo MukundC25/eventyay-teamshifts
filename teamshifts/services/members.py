@@ -133,9 +133,7 @@ def my_shifts_page_available(user) -> bool:
     """Whether the global My Shifts page loads for this user (it returns 404 otherwise)."""
     with scopes_disabled():
         has_visible_shift = (
-            ShiftAssignment.objects.filter(team_member=user, shift__event__plugins__contains="teamshifts")
-            .exclude(hidden_after_removal_filter(user))
-            .exists()
+            ShiftAssignment.objects.filter(team_member=user, shift__event__plugins__contains="teamshifts").exclude(hidden_after_removal_filter(user)).exists()
         )
         return has_visible_shift or ShiftCalendarToken.objects.filter(user=user).exists()
 
