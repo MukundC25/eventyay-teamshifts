@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils.timezone import now
 from django_scopes import scope
-from eventyay.base.models import Team
+from eventyay.base.models import Event, Team
 
 from teamshifts.models import (
     ApplicationStatus,
@@ -188,31 +188,40 @@ def test_summary_preview_sample_uses_the_events_own_shifts(event, cfm):
     assert "Registration Desk" in build_shift_summary_sample(event)
 
 
-@pytest.mark.django_db
-def test_published_summary_is_sent_with_current_shifts(event, cfm, volunteer, role):
-    shift = _shift(event, "Setup", now() + datetime.timedelta(days=3))
-    with scope(event=event):
-        ShiftAssignment.objects.create(shift=shift, team_member=volunteer, role=role)
+def _send_summary_now(event, volunteer):
     queue = queue_shift_summary_email(event, volunteer)
     with scope(event=event):
         TeamShiftsEmailQueue.objects.filter(pk=queue.pk).update(send_after=now() - datetime.timedelta(minutes=1))
     with patch("teamshifts.tasks.mail") as mock_mail:
         send_queued_email.run(event_id=event.pk, queue_id=queue.pk)
     mock_mail.assert_called_once()
-    context = mock_mail.call_args.kwargs["context"]
+    return mock_mail.call_args.kwargs["context"]
+
+
+@pytest.mark.django_db
+def test_published_summary_is_sent_with_current_shifts(event, cfm, volunteer, role):
+    shift = _shift(event, "Setup", now() + datetime.timedelta(days=3))
+    with scope(event=event):
+        ShiftAssignment.objects.create(shift=shift, team_member=volunteer, role=role)
+    context = _send_summary_now(event, volunteer)
     assert "Setup" in context["shift_summary"]
     assert context["my_shifts_url"].endswith("/common/my-shifts/")
 
+    # No shifts anywhere: My Shifts would return 404, so the schedule is linked instead.
     with scope(event=event):
         ShiftAssignment.objects.all().delete()
-    queue = queue_shift_summary_email(event, volunteer)
-    with scope(event=event):
-        TeamShiftsEmailQueue.objects.filter(pk=queue.pk).update(send_after=now() - datetime.timedelta(minutes=1))
-    with patch("teamshifts.tasks.mail") as mock_mail:
-        send_queued_email.run(event_id=event.pk, queue_id=queue.pk)
-    context = mock_mail.call_args.kwargs["context"]
+    context = _send_summary_now(event, volunteer)
     assert "no shifts" in context["shift_summary"]
     assert context["my_shifts_url"] == context["shift_schedule_url"]
+
+    # Shifts left at another event keep My Shifts loading, so the link stays.
+    other = Event.objects.create(organizer=event.organizer, name="Other", slug="other-event", date_from=now(), plugins="teamshifts")
+    other_shift = _shift(other, "Elsewhere", now() + datetime.timedelta(days=3))
+    with scope(event=other):
+        ShiftAssignment.objects.create(shift=other_shift, team_member=volunteer)
+    context = _send_summary_now(event, volunteer)
+    assert "no shifts" in context["shift_summary"]
+    assert context["my_shifts_url"].endswith("/common/my-shifts/")
 
 
 @pytest.mark.django_db

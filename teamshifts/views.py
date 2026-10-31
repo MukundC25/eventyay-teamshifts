@@ -116,6 +116,7 @@ from .services.members import (
     accept_manager_as_member,
     add_member_from_organizer,
     hidden_after_removal_filter,
+    my_shifts_page_available,
     remove_members_from_team,
     upcoming_assignment_filter,
 )
@@ -3754,14 +3755,7 @@ class MyShiftsGlobalView(LoginRequiredMixin, TemplateView):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return super().dispatch(request, *args, **kwargs)
-        with scopes_disabled():
-            has_active = (
-                ShiftAssignment.objects.filter(team_member=request.user, shift__event__plugins__contains="teamshifts")
-                .exclude(hidden_after_removal_filter(request.user))
-                .exists()
-            )
-            has_calendar_token = ShiftCalendarToken.objects.filter(user=request.user).exists()
-        if not has_active and not has_calendar_token:
+        if not my_shifts_page_available(request.user):
             raise Http404
         return super().dispatch(request, *args, **kwargs)
 

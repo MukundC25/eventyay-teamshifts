@@ -15,7 +15,7 @@ from eventyay.celery_app import app
 from i18nfield.strings import LazyI18nString
 
 from .models import ApplicationStatus, CallForTeamMembers, TeamMemberApplication, TeamShiftsEmailQueue
-from .services.shift_summary import build_shift_summary, has_shifts
+from .services.shift_summary import build_shift_summary
 
 logger = logging.getLogger(__name__)
 
@@ -167,9 +167,12 @@ def send_queued_email(self, event_id: int, queue_id: int):
                     if queue.is_shift_summary and recipient.user:
                         ctx_kwargs["shift_summary"] = build_shift_summary(event, recipient.user, locale)
                     context = get_email_context(**ctx_kwargs)
-                    if queue.is_shift_summary and recipient.user and not has_shifts(event, recipient.user):
-                        # The My Shifts page is hidden (404) for volunteers without shifts.
-                        context["my_shifts_url"] = context.get("shift_schedule_url", "")
+                    if queue.is_shift_summary and recipient.user:
+                        # Imported here: services.members imports services.email, which imports this module.
+                        from .services.members import my_shifts_page_available
+
+                        if not my_shifts_page_available(recipient.user):
+                            context["my_shifts_url"] = context.get("shift_schedule_url", "")
                     mail(
                         email=recipient.email,
                         subject=subject,

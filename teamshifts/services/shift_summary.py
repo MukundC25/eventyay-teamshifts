@@ -9,11 +9,6 @@ from eventyay.multidomain.urlreverse import build_absolute_uri
 from ..models import Shift, ShiftAssignment
 
 
-def has_shifts(event: Event, user: User) -> bool:
-    with scope(event=event):
-        return ShiftAssignment.objects.filter(shift__event=event, team_member=user).exists()
-
-
 def _format_line(event: Event, shift, role, locale: str) -> str:
     start = shift.start_time.astimezone(event.tz)
     end = shift.end_time.astimezone(event.tz)
