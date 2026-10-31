@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("base", "0001_initial"),
-        ("teamshifts", "0031_shiftcalendartoken"),
+        ("teamshifts", "0033_member_removed_status"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                     ("teamshifts.application.rejected", "Application rejected"),
                     ("teamshifts.application.organizer", "New application (organizer notification)"),
                     ("teamshifts.member.added_by_organizer", "Added as volunteer by organizer"),
+                    ("teamshifts.member.removed", "Removed from team"),
                     ("teamshifts.shift.assigned_by_organizer", "Shift assigned by organizer"),
                     ("teamshifts.shift.claimed_by_volunteer", "Shift sign-up confirmation"),
                     ("teamshifts.shift.dropped_by_volunteer", "Shift drop confirmation"),
